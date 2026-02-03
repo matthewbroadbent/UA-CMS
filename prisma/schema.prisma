@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Status {
+  PENDING
+  DRAFTING
+  EDITORIAL
+  VOICE
+  MEDIA
+  FINAL_RENDER
+  PUBLISHED
+  FAILED
+}
+
+enum ScriptStatus {
+  DRAFT
+  APPROVED
+  VOICE_GENERATED
+  MEDIA_GENERATED
+  RENDERED
+  FAILED
+}
+
+model WeeklyInquiry {
+  id            String   @id @default(cuid())
+  uaId          String   @unique // e.g., UA-20260202-1209
+  theme         String
+  thinking      String?
+  reality       String?
+  rant          String?
+  nuclear       String?
+  anythingElse  String?
+  status        Status   @default(PENDING)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  article       Article?
+  scripts       VideoScript[]
+}
+
+model Article {
+  id              String        @id @default(cuid())
+  weeklyInquiryId String        @unique
+  weeklyInquiry   WeeklyInquiry @relation(fields: [weeklyInquiryId], references: [id], onDelete: Cascade)
+  
+  draftContent    String        @db.Text
+  finalContent    String?       @db.Text
+  status          Status        @default(EDITORIAL) // Managed within the editorial stage
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model VideoScript {
+  id              String        @id @default(cuid())
+  weeklyInquiryId String
+  weeklyInquiry   WeeklyInquiry @relation(fields: [weeklyInquiryId], references: [id], onDelete: Cascade)
+  
+  durationType    String        // 30s, 60s, 90s, 120s, 180s
+  hook            String?       @db.Text
+  script          String        @db.Text
+  closingLine     String?       @db.Text
+  
+  audioUrl        String?       // Local path or URL
+  status          ScriptStatus  @default(DRAFT)
+  
+  scenes          Scene[]
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([weeklyInquiryId, durationType])
+}
+
+model Scene {
+  id              String        @id @default(cuid())
+  videoScriptId   String
+  videoScript     VideoScript   @relation(fields: [videoScriptId], references: [id], onDelete: Cascade)
+  
+  index           Int           // Position in video
+  type            String        // VIDEO, IMAGE
+  prompt          String        @db.Text
+  duration        Float
+  assetUrl        String?       // Local path or URL
+  status          String        @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Settings {
+  id              String        @id @default("global")
+  geminiApiKey    String?
+  falApiKey       String?
+  elevenLabsApiKey String?
+  substackUrl     String?
+}
