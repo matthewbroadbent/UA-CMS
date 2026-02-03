@@ -69,6 +69,8 @@ RETURN JSON:
     return data.scenes;
 }
 
+import { fal } from "@fal-ai/client";
+
 export async function generateMediaAsset(sceneId: string) {
     const scene = await prisma.scene.findUnique({
         where: { id: sceneId }
@@ -76,12 +78,43 @@ export async function generateMediaAsset(sceneId: string) {
 
     if (!scene) return;
 
-    const FAL_KEY = process.env.FAL_KEY;
-    const modelUrl = scene.type === 'VIDEO'
-        ? "https://queue.fal.run/fal-ai/veo3/fast"
-        : "https://queue.fal.run/fal-ai/flux/schnell";
+    // Update status to processing
+    await prisma.scene.update({
+        where: { id: sceneId },
+        data: { status: 'PROCESSING' }
+    });
 
-    // Here we would call Fal.ai API
-    // For now, simulating success
-    console.log(`Generating ${scene.type} for prompt: ${scene.prompt}`);
+    try {
+        const result: any = await fal.subscribe(
+            scene.type === 'VIDEO' ? "fal-ai/hunyuan-video" : "fal-ai/flux/schnell",
+            {
+                input: {
+                    prompt: scene.prompt,
+                },
+                logs: true,
+                onQueueUpdate: (update) => {
+                    console.log(`Scene ${sceneId} queue update:`, update.status);
+                }
+            }
+        );
+
+        const mediaUrl = scene.type === 'VIDEO' ? result.video.url : result.images[0].url;
+
+        await prisma.scene.update({
+            where: { id: sceneId },
+            data: {
+                assetUrl: mediaUrl,
+                status: 'COMPLETED'
+            }
+        });
+
+        return mediaUrl;
+    } catch (error) {
+        console.error(`Fal error for scene ${sceneId}:`, error);
+        await prisma.scene.update({
+            where: { id: sceneId },
+            data: { status: 'FAILED' }
+        });
+        throw error;
+    }
 }

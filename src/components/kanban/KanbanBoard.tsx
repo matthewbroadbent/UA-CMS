@@ -9,8 +9,11 @@ import {
     MicIcon,
     PlayIcon,
     CheckCircleIcon,
-    AlertCircleIcon
+    AlertCircleIcon,
+    Edit3Icon,
+    EyeIcon
 } from 'lucide-react';
+import StageEditor from '@/components/editor/StageEditor';
 
 const STAGES = [
     { id: 'PENDING', title: 'Input/Reminder', icon: PlusIcon, color: 'bg-slate-500' },
@@ -120,7 +123,12 @@ export default function KanbanBoard() {
                             className="w-full max-w-2xl h-full bg-white dark:bg-slate-900 shadow-2xl overflow-y-auto"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <ItemDetail item={selectedItem} onClose={() => setSelectedItem(null)} onMove={() => moveStage(selectedItem.id, selectedItem.status)} />
+                            <ItemDetail
+                                item={selectedItem}
+                                onClose={() => setSelectedItem(null)}
+                                onMove={() => moveStage(selectedItem.id, selectedItem.status)}
+                                onRefresh={fetchItems}
+                            />
                         </motion.div>
                     </motion.div>
                 )}
@@ -129,7 +137,52 @@ export default function KanbanBoard() {
     );
 }
 
-function ItemDetail({ item, onClose, onMove }: { item: any, onClose: () => void, onMove: () => void }) {
+function ItemDetail({ item, onClose, onMove, onRefresh }: { item: any, onClose: () => void, onMove: () => void, onRefresh: () => void }) {
+    const [editingPart, setEditingPart] = useState<{ type: 'article' | 'script', id: string, content: string } | null>(null);
+
+    const handleSave = async (content: string) => {
+        if (!editingPart) return;
+
+        try {
+            await fetch('/api/content/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: editingPart.type,
+                    id: editingPart.id,
+                    content
+                }),
+            });
+            setEditingPart(null);
+            onRefresh();
+        } catch (e) {
+            console.error('Failed to save content', e);
+        }
+    };
+
+    if (editingPart) {
+        return (
+            <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900">
+                <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <button
+                        onClick={() => setEditingPart(null)}
+                        className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
+                    >
+                        <ChevronRightIcon size={16} className="rotate-180" /> Back to Preview
+                    </button>
+                    <span className="text-xs font-mono text-slate-400 capitalize">{editingPart.type} Editor</span>
+                </div>
+                <div className="flex-1 p-6">
+                    <StageEditor
+                        title={`Editing ${editingPart.type === 'article' ? 'Substack Article' : 'Video Script'}`}
+                        initialContent={editingPart.content}
+                        onSave={handleSave}
+                    />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-full">
             <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900 z-10">
@@ -162,7 +215,12 @@ function ItemDetail({ item, onClose, onMove }: { item: any, onClose: () => void,
                     <section>
                         <div className="flex items-center justify-between mb-4">
                             <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Substack Article</h4>
-                            <button className="text-xs text-blue-500 hover:underline">Edit Original</button>
+                            <button
+                                onClick={() => setEditingPart({ type: 'article', id: item.article.id, content: item.article.draftContent })}
+                                className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium"
+                            >
+                                <Edit3Icon size={12} /> Edit Draft
+                            </button>
                         </div>
                         <div className="prose prose-sm dark:prose-invert max-w-none p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 line-clamp-6 whitespace-pre-wrap">
                             {item.article.draftContent}
@@ -177,8 +235,17 @@ function ItemDetail({ item, onClose, onMove }: { item: any, onClose: () => void,
                             {item.scripts.map((script: any) => (
                                 <div key={script.id} className="p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
                                     <div className="flex justify-between items-center mb-2">
-                                        <span className="text-xs font-bold px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded">{script.durationType}</span>
-                                        <span className="text-[10px] uppercase text-slate-400 font-bold">{script.status}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded">{script.durationType}</span>
+                                            <span className="text-[10px] uppercase text-slate-400 font-bold">{script.status}</span>
+                                        </div>
+                                        <button
+                                            onClick={() => setEditingPart({ type: 'script', id: script.id, content: script.script })}
+                                            className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-400 hover:text-blue-500"
+                                            title="Edit Script"
+                                        >
+                                            <Edit3Icon size={14} />
+                                        </button>
                                     </div>
                                     <p className="text-sm text-slate-700 dark:text-slate-300 font-medium italic mb-2">"{script.hook}"</p>
                                     <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-3">{script.script}</p>

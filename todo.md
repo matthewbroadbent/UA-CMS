@@ -21,7 +21,7 @@ We have successfully transitioned the core logic from your 4 n8n workflows into 
 3.  **Boot Up**: Run `npm run dev` (or `docker-compose up -d` if your Docker Desktop is running) to see the Kanban board in action.
 
 ## 📝 Remaining To-Do
-- [ ] Connect the **Editorial Editor** to the side panel for live content refinement.
-- [ ] Implement the **Fal.ai** image/video generation calls in `src/lib/scenes.ts`.
-- [ ] Refine the **FFmpeg** subtitle overlay fonts to ensure exact "BBC News" match on your local system path.
-- [ ] Deploy the `docker-compose.yml` to your VPS.
+- [x] Connect the **Editorial Editor** to the side panel for live content refinement.
+- [x] Implement the **Fal.ai** image/video generation calls in `src/lib/scenes.ts`.
+- [x] Refine the **FFmpeg** subtitle overlay fonts and implements stitching in `src/lib/media.ts`.
+- [ ] **Final Step**: Deploy the `docker-compose.yml` to your VPS (Instructions in [walkthrough.md](file:///Users/matthewbroadbent1/.gemini/antigravity/brain/59ab133e-efda-4d1a-b430-4981c01172c2/walkthrough.md)).

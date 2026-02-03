@@ -8,7 +8,9 @@ RUN apk add --no-cache \
     bash \
     python3 \
     make \
-    g++
+    g++ \
+    font-dejavu \
+    ttf-freefont
 
 COPY package*.json ./
 
