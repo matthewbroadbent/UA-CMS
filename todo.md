@@ -1,7 +1,7 @@
 # UA CMS Migration: Current Status & Next Steps
 
 ## 📍 Where We Are
-We have successfully transitioned the core logic from your 4 n8n workflows into a unified Next.js/Node.js application. The "fragile infrastructure" is now a stable, containerized CMS with manual "Human-in-the-Loop" controls.
+We have successfully transitioned the core logic from your 4 n8n workflows into a unified Next.js/Node.js application. (Note: Upgraded Docker to Node 20 to support Prisma 7).
 
 ## ✅ Files Completed
 - **Project Foundation**: `docker-compose.yml`, `Dockerfile`, `.devcontainer/devcontainer.json`, `prisma/schema.prisma`.

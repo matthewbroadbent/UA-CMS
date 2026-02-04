@@ -8,7 +8,7 @@ export default function NewInquiry() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [form, setForm] = useState({
-        uaId: `UA-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`,
+        uaId: `UA-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${new Date().toISOString().slice(11, 16).replace(/:/g, '')}`,
         theme: '',
         thinking: '',
         reality: '',
@@ -26,11 +26,21 @@ export default function NewInquiry() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(form),
             });
+
             if (res.ok) {
+                const data = await res.json();
+                console.log('Inquiry created:', data);
+                // Small delay to ensure DB write completes
+                await new Promise(resolve => setTimeout(resolve, 500));
                 router.push('/');
+            } else {
+                const error = await res.json();
+                console.error('Server error:', error);
+                alert(`Failed to create inquiry: ${error.error || 'Unknown error'}`);
             }
         } catch (error) {
             console.error('Submit error:', error);
+            alert('Network error: Could not submit inquiry');
         } finally {
             setLoading(false);
         }
@@ -106,6 +116,28 @@ export default function NewInquiry() {
                                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5"
                                 />
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-red-600 dark:text-red-400 mb-1 font-bold">E) Nuclear Option (Internal Only)</label>
+                            <textarea
+                                rows={2}
+                                value={form.nuclear}
+                                onChange={e => setForm({ ...form, nuclear: e.target.value })}
+                                placeholder="What's the raw, unpolished, 'nuclear' version of this thought?"
+                                className="w-full bg-red-50/30 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-lg p-2.5"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">F) Anything Else?</label>
+                            <textarea
+                                rows={2}
+                                value={form.anythingElse}
+                                onChange={e => setForm({ ...form, anythingElse: e.target.value })}
+                                placeholder="Any specific facts, numbers, or contexts?"
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5"
+                            />
                         </div>
 
                         <button

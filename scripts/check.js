@@ -1,0 +1,1 @@
+import { PrismaClient } from '@prisma/client'; const prisma = new PrismaClient(); async function main() { const scripts = await prisma.videoScript.findMany({ select: { id: true, visualPrompt: true, status: true } }); console.log(JSON.stringify(scripts, null, 2)); } main().catch(console.error);

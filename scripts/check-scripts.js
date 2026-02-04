@@ -1,0 +1,1 @@
+import { PrismaClient } from '@prisma/client'; const prisma = new PrismaClient(); async function main() { const items = await prisma.weeklyInquiry.findMany({ include: { scripts: true } }); console.log(JSON.stringify(items, null, 2)); } main();

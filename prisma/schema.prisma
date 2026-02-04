@@ -41,6 +41,7 @@ model WeeklyInquiry {
   
   article       Article?
   scripts       VideoScript[]
+  generationRuns GenerationRun[]
 }
 
 model Article {
@@ -50,6 +51,7 @@ model Article {
   
   draftContent    String        @db.Text
   finalContent    String?       @db.Text
+  approved        Boolean       @default(false)
   status          Status        @default(EDITORIAL) // Managed within the editorial stage
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -66,7 +68,10 @@ model VideoScript {
   closingLine     String?       @db.Text
   
   audioUrl        String?       // Local path or URL
+  videoUrl        String?       // Local path or URL
+  approved        Boolean       @default(false)
   status          ScriptStatus  @default(DRAFT)
+  visualPrompt    String?       @db.Text
   
   scenes          Scene[]
   
@@ -84,6 +89,7 @@ model Scene {
   index           Int           // Position in video
   type            String        // VIDEO, IMAGE
   prompt          String        @db.Text
+  scriptSegment   String?       @db.Text // The part of the script read during this scene
   duration        Float
   assetUrl        String?       // Local path or URL
   status          String        @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
@@ -98,4 +104,53 @@ model Settings {
   falApiKey       String?
   elevenLabsApiKey String?
   substackUrl     String?
+}
+
+model Prompt {
+  id        String   @id @default(cuid())
+  key       String   // e.g., 'SUBSTACK_STAGE_1', 'SUBSTACK_STAGE_2'
+  name      String?
+  stage     Int      @default(1)
+  content   String   @db.Text
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GenerationRun {
+  id              String        @id @default(cuid())
+  weeklyInquiryId String
+  weeklyInquiry   WeeklyInquiry @relation(fields: [weeklyInquiryId], references: [id], onDelete: Cascade)
+  
+  mode            String        // STANDARD, COMPARE
+  
+  // Stage 1 Info
+  stage1Model     String
+  stage1Provider  String
+  stage1Prompt    String?       @db.Text
+  stage1Output    String?       @db.Text // Spine JSON
+  
+  // Results
+  outputs         GenerationOutput[]
+  
+  status          String        @default("SUCCESS")
+  error           String?       @db.Text
+  
+  createdAt       DateTime      @default(now())
+}
+
+model GenerationOutput {
+  id              String        @id @default(cuid())
+  runId           String
+  run             GenerationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  
+  model           String
+  provider        String
+  prompt          String?       @db.Text
+  content         String        @db.Text // Article Markdown
+  
+  tokensUsed      Int?
+  costEstimate    Float?
+  
+  createdAt       DateTime      @default(now())
 }

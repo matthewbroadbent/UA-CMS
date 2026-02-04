@@ -1,4 +1,4 @@
-import { ElevenLabsClient } from "elevenlabs";
+import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import fs from "fs";
 import path from "path";
 
@@ -12,7 +12,7 @@ export async function generateSpeech(text: string, scriptId: string) {
             process.env.ELEVENLABS_VOICE_ID || "uesuxleIgmNYCdwNrW9s", // Default UA voice
             {
                 text: text,
-                model_id: "eleven_monolingual_v1",
+                modelId: "eleven_monolingual_v1",
             }
         );
 
@@ -21,6 +21,7 @@ export async function generateSpeech(text: string, scriptId: string) {
 
         const fileName = `${scriptId}.mp3`;
         const filePath = path.join(publicDir, fileName);
+        console.log(`Generating speech for script ${scriptId}...`);
 
         // Convert ReadableStream to Buffer
         const chunks: any[] = [];
@@ -29,6 +30,7 @@ export async function generateSpeech(text: string, scriptId: string) {
         }
         const buffer = Buffer.concat(chunks);
         fs.writeFileSync(filePath, buffer);
+        console.log(`Audio saved: ${filePath}`);
 
         return `/media/audio/${fileName}`;
     } catch (error) {

@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { generateDraft, generateScripts } from '@/lib/gemini';
+import { generateScripts } from '@/lib/gemini';
 import { generateSpeech } from '@/lib/voice';
+import { runPipeline, runMediaPipeline } from '@/lib/pipeline';
 
 export async function POST(req: Request) {
     try {
-        const { id, status } = await req.json();
+        const body = await req.json();
+        const { id, status, config } = body;
 
         const item = await prisma.weeklyInquiry.findUnique({
             where: { id },
@@ -15,19 +17,37 @@ export async function POST(req: Request) {
         if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
 
         // Handle Stage-Specific Logic (Automatic actions on manual move)
-        if (status === 'EDITORIAL' && !item.article) {
-            // Trigger Gemini Drafting
-            const draft = await generateDraft(item);
-            const scripts = await generateScripts(draft);
+        if (status === 'EDITORIAL') {
+            console.log(`Starting TWO-STAGE generation for item: ${id}`);
 
-            await prisma.$transaction([
-                prisma.article.create({
-                    data: {
-                        weeklyInquiryId: id,
-                        draftContent: draft,
-                    }
-                }),
-                ...scripts.map((s: any) => prisma.videoScript.create({
+            const pipelineConfig = config || {
+                mode: 'STANDARD',
+                stage1Model: 'gemini-2.0-flash',
+                stage1Provider: 'GEMINI',
+                stage2Models: [
+                    process.env.ANTHROPIC_API_KEY
+                        ? { model: 'claude-3-5-sonnet-20241022', provider: 'ANTHROPIC' }
+                        : { model: 'gemini-2.0-flash', provider: 'GEMINI' }
+                ]
+            };
+
+            // Trigger Pipeline (Article)
+            const result = await runPipeline(id, pipelineConfig);
+            console.log(`Article generated via Pipeline: ${result.runId}`);
+
+            // Trigger Gemini Drafting for Scripts (Existing logic for now)
+            // Note: We use the first output's content for scripts
+            const primaryContent = result.outputs[0].content;
+            const scripts = await generateScripts(primaryContent);
+            console.log(`Scripts generated: ${scripts.length}`);
+
+            // Clean up existing scripts if they exist (Article is handled by pipeline upsert)
+            if (item.scripts.length > 0) {
+                await prisma.videoScript.deleteMany({ where: { weeklyInquiryId: id } });
+            }
+
+            await prisma.$transaction(
+                scripts.map((s: any) => prisma.videoScript.create({
                     data: {
                         weeklyInquiryId: id,
                         durationType: s.duration,
@@ -36,7 +56,8 @@ export async function POST(req: Request) {
                         closingLine: s.closingLine,
                     }
                 }))
-            ]);
+            );
+            console.log("Database transaction complete.");
         }
 
         if (status === 'VOICE') {
@@ -54,8 +75,8 @@ export async function POST(req: Request) {
         }
 
         if (status === 'MEDIA') {
-            // Here we would plan scenes (Stage 4)
-            // For now, mark as progressing
+            console.log(`Starting MEDIA PIPELINE for item: ${id}`);
+            await runMediaPipeline(id);
         }
 
         const updated = await prisma.weeklyInquiry.update({
@@ -65,7 +86,11 @@ export async function POST(req: Request) {
 
         return NextResponse.json(updated);
     } catch (error: any) {
-        console.error('Move error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error('CRITICAL MOVE ERROR:', error);
+        // Return detailed error for easier debugging
+        return NextResponse.json({
+            error: error.message || 'Unknown error',
+            details: error.stack
+        }, { status: 500 });
     }
 }

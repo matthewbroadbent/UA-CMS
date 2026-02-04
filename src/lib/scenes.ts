@@ -1,5 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "./prisma";
+import fs from "fs";
+import { fal } from "@fal-ai/client";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -69,9 +71,13 @@ RETURN JSON:
     return data.scenes;
 }
 
-import { fal } from "@fal-ai/client";
-
 export async function generateMediaAsset(sceneId: string) {
+    const log = (msg: string) => {
+        const line = `[${new Date().toISOString()}] [FAL] ${msg}\n`;
+        fs.appendFileSync('scribing.log', line);
+        console.log(`[FAL] ${msg}`);
+    };
+
     const scene = await prisma.scene.findUnique({
         where: { id: sceneId }
     });
@@ -85,6 +91,7 @@ export async function generateMediaAsset(sceneId: string) {
     });
 
     try {
+        log(`Generating ${scene.type} for scene ${sceneId}...`);
         const result: any = await fal.subscribe(
             scene.type === 'VIDEO' ? "fal-ai/hunyuan-video" : "fal-ai/flux/schnell",
             {
@@ -92,13 +99,28 @@ export async function generateMediaAsset(sceneId: string) {
                     prompt: scene.prompt,
                 },
                 logs: true,
-                onQueueUpdate: (update) => {
-                    console.log(`Scene ${sceneId} queue update:`, update.status);
+                onQueueUpdate: (update: any) => {
+                    log(`Scene ${sceneId} queue status: ${update.status}`);
                 }
             }
         );
 
-        const mediaUrl = scene.type === 'VIDEO' ? result.video.url : result.images[0].url;
+        // Harden extraction (handles both flat and nested 'data' structures)
+        let mediaUrl = '';
+        const data = result.data || result; // Use nested data if available, else fallback to top-level
+
+        if (scene.type === 'VIDEO') {
+            mediaUrl = data.video?.url || data.url || '';
+        } else {
+            mediaUrl = data.images?.[0]?.url || data.image?.url || data.url || '';
+        }
+
+        if (!mediaUrl) {
+            log(`ERROR: Could not find media URL in Fal response: ${JSON.stringify(result)}`);
+            throw new Error(`Media URL missing in Fal response for scene ${sceneId}`);
+        }
+
+        log(`Asset generated successfully for scene ${sceneId}: ${mediaUrl}`);
 
         await prisma.scene.update({
             where: { id: sceneId },

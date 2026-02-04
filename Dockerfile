@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -18,9 +18,12 @@ RUN npm install
 
 COPY . .
 
+# Generate Prisma Client
+RUN npx prisma generate
+
 # Create directory for media assets
 RUN mkdir -p public/media
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+CMD ["sh", "-c", "npx prisma generate && npm run dev"]
