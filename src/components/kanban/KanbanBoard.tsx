@@ -20,7 +20,10 @@ import {
     SettingsIcon,
     ExternalLinkIcon,
     ZapIcon,
-    LayersIcon
+    LayersIcon,
+    DownloadIcon,
+    CopyIcon,
+    Share2Icon
 } from 'lucide-react';
 import StageEditor from '../editor/StageEditor';
 import ScriptEditor from '../editor/ScriptEditor';
@@ -370,6 +373,9 @@ function ItemDetail({
     const [isMoving, setIsMoving] = useState(false);
     const [isScribing, setIsScribing] = useState(false);
     const [isRendering, setIsRendering] = useState<Record<string, boolean>>({});
+    const [aspectRatios, setAspectRatios] = useState<Record<string, string>>(
+        item.scripts ? Object.fromEntries(item.scripts.map((s: any) => [s.id, s.aspectRatio || "1:1"])) : {}
+    );
     const [selectedScripts, setSelectedScripts] = useState<string[]>(
         item.scripts ? item.scripts.filter((s: any) => ['30s', '60s'].includes(s.durationType)).map((s: any) => s.id) : []
     );
@@ -413,7 +419,7 @@ function ItemDetail({
             const res = await fetch('/api/kanban/render', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ scriptId }),
+                body: JSON.stringify({ scriptId, aspectRatio: aspectRatios[scriptId] }),
             });
             if (!res.ok) {
                 const err = await res.json();
@@ -731,6 +737,17 @@ function ItemDetail({
                                         {script.approved && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1"><CheckIcon size={12} strokeWidth={4} /> Production Ready</span>}
                                     </div>
                                     <div className="flex items-center gap-3">
+                                        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl gap-1">
+                                            {["1:1", "9:16"].map((ratio) => (
+                                                <button
+                                                    key={ratio}
+                                                    onClick={() => setAspectRatios(prev => ({ ...prev, [script.id]: ratio }))}
+                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${aspectRatios[script.id] === ratio ? 'bg-white dark:bg-slate-700 text-black dark:text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                                >
+                                                    {ratio}
+                                                </button>
+                                            ))}
+                                        </div>
                                         {script.audioUrl && (
                                             <button
                                                 onClick={() => handleRender(script.id)}
@@ -830,6 +847,57 @@ function ItemDetail({
                                                     </p>
                                                 </div>
                                             ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {script.videoUrl && (
+                                    <div className="mt-12 p-8 bg-slate-900 rounded-[3rem] border border-white/10 shadow-2xl overflow-hidden relative group">
+                                        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                                            <Share2Icon size={120} className="text-white" strokeWidth={1} />
+                                        </div>
+                                        <div className="relative z-10">
+                                            <div className="flex items-center justify-between mb-8">
+                                                <div>
+                                                    <h4 className="text-[12px] font-black uppercase tracking-[0.4em] text-indigo-400">Global Distribution Hub</h4>
+                                                    <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest">Multi-Platform Readiness Active</p>
+                                                </div>
+                                                <a
+                                                    href={script.videoUrl}
+                                                    download={`ua_${script.durationType}_${(script.aspectRatio || '1:1').replace(':', 'x')}.mp4`}
+                                                    className="px-6 py-3 bg-indigo-500 text-white text-[11px] font-black uppercase tracking-[0.3em] rounded-2xl hover:scale-105 transition-all flex items-center gap-3 shadow-xl shadow-indigo-500/20"
+                                                >
+                                                    <DownloadIcon size={16} /> Download MP4
+                                                </a>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {[
+                                                    { name: 'LinkedIn', prefix: '[LI] ' },
+                                                    { name: 'Instagram', prefix: '[IG] ' },
+                                                    { name: 'Facebook', prefix: '[FB] ' },
+                                                    { name: 'X / Twitter', prefix: '[X] ' }
+                                                ].map(platform => (
+                                                    <div key={platform.name} className="p-5 bg-white/5 rounded-[2rem] border border-white/5 hover:border-indigo-500/30 transition-all flex flex-col justify-between">
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{platform.name}</span>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const caption = `${platform.name === 'LinkedIn' ? 'Authority Content: ' : ''}${script.hook}\n\n${script.script}\n\n#UnemployableAdvisor #BusinessValue`;
+                                                                    navigator.clipboard.writeText(caption);
+                                                                    alert(`${platform.name} caption copied!`);
+                                                                }}
+                                                                className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white"
+                                                                title="Copy Caption"
+                                                            >
+                                                                <CopyIcon size={16} />
+                                                            </button>
+                                                        </div>
+                                                        <p className="text-[12px] text-slate-400 font-medium leading-relaxed line-clamp-2 italic opacity-60">
+                                                            "{script.hook}..."
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                 )}

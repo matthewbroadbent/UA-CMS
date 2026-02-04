@@ -3,13 +3,13 @@ import { runRenderPipeline } from '@/lib/pipeline';
 
 export async function POST(req: Request) {
     try {
-        const { scriptId } = await req.json();
+        const { scriptId, aspectRatio } = await req.json();
         if (!scriptId) return NextResponse.json({ error: 'Missing scriptId' }, { status: 400 });
 
-        console.log(`[API] Final Render Request: ${scriptId}`);
+        console.log(`[API] Final Render Request: ${scriptId} | Aspect Ratio: ${aspectRatio || 'default'}`);
 
         // Non-blocking trigger
-        runRenderPipeline(scriptId).catch(err => {
+        runRenderPipeline(scriptId, aspectRatio).catch(err => {
             console.error('Background Render Pipeline Error:', err);
         });
 

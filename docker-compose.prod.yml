@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    environment:
+      - NODE_ENV=production
+    restart: always
+    ports:
+      - "3000:3000"
+    # Production overrides like smaller log files or restricted resources can go here
+
+  db:
+    restart: always
+    # Ensure backups are handled or use a managed DB in real production

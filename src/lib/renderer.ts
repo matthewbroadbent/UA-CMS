@@ -17,9 +17,10 @@ import { prisma } from './prisma';
 interface RenderOptions {
     scriptId: string;
     outputName?: string;
+    aspectRatio?: string; // "1:1" or "9:16"
 }
 
-export async function renderVideo({ scriptId, outputName }: RenderOptions, onProgress?: (msg: string) => void) {
+export async function renderVideo({ scriptId, outputName, aspectRatio: overrideRatio }: RenderOptions, onProgress?: (msg: string) => void) {
     const log = (msg: string) => {
         if (onProgress) onProgress(msg);
         console.log(`[Renderer] ${msg}`);
@@ -37,19 +38,24 @@ export async function renderVideo({ scriptId, outputName }: RenderOptions, onPro
     if (!script) throw new Error("Script not found");
     if (!script.audioUrl) throw new Error("Audio must be generated before rendering");
 
+    const aspectRatio = overrideRatio || (script as any).aspectRatio || "1:1";
+    const isVertical = aspectRatio === "9:16";
+    const width = 1080;
+    const height = isVertical ? 1920 : 1080;
+
     // Use relative paths to avoid issues with spaces in the absolute project path on macOS
     const audioPath = path.join('public', script.audioUrl);
-    const outputPath = path.join('public', 'media', 'videos', `${outputName || scriptId}.mp4`);
+    const outputPath = path.join('public', 'media', 'videos', `${outputName || scriptId}_${aspectRatio.replace(':', 'x')}.mp4`);
     const relativeTempDir = path.join('tmp', scriptId);
 
     if (!fs.existsSync(relativeTempDir)) fs.mkdirSync(relativeTempDir, { recursive: true });
     if (!fs.existsSync(path.dirname(outputPath))) fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-    log(`Starting render for ${scriptId}...`);
+    log(`Starting render for ${scriptId} in ${aspectRatio}...`);
 
     try {
         // 1. Generate Subtitles (ASS format for brand hierarchy)
-        const assPath = await generateASS(script, relativeTempDir);
+        const assPath = await generateASS(script, relativeTempDir, width, height);
 
         // 3. Build FFmpeg command
         const command = ffmpeg();
@@ -60,9 +66,8 @@ export async function renderVideo({ scriptId, outputName }: RenderOptions, onPro
         for (const scene of script.scenes) {
             if (!scene.assetUrl) continue;
 
-            // Logic for local path (assuming public directory or direct URL)
             const assetPath = scene.assetUrl.startsWith('http')
-                ? scene.assetUrl // Remote (FFmpeg can handle URLs)
+                ? scene.assetUrl
                 : path.join('public', scene.assetUrl);
 
             command.input(assetPath);
@@ -72,13 +77,11 @@ export async function renderVideo({ scriptId, outputName }: RenderOptions, onPro
 
             if (scene.type === 'IMAGE') {
                 // Ken Burns: Subtle zoom in
-                // Robust scale to 2160x2160 ensuring we fill the space before zoompan
-                filterChain += `[${idx}:v]scale=2160:2160:force_original_aspect_ratio=increase,crop=2160:2160,zoompan=z='min(zoom+0.0005,1.2)':d=${Math.ceil(duration * 25)}:s=1080x1080:fps=25[v${idx}];`;
+                // Robust scale ensuring we fill the space before zoompan
+                filterChain += `[${idx}:v]scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase,crop=${width * 2}:${height * 2},zoompan=z='min(zoom+0.0005,1.2)':d=${Math.ceil(duration * 25)}:s=${width}x${height}:fps=25[v${idx}];`;
             } else {
-                // Video: Scale to fill 1080x1080, Crop 1:1, and Normalize to 25fps
-                // We use loop=-1:size=1:start=-1 to infinitely loop the last frame if the video is too short,
-                // then trim it to the exact duration we need.
-                filterChain += `[${idx}:v]scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080,loop=loop=-1:size=1:start=-1,trim=duration=${duration},setpts=PTS-STARTPTS,fps=25[v${idx}];`;
+                // Video: Scale to fill, Crop, and Normalize to 25fps
+                filterChain += `[${idx}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},loop=loop=-1:size=1:start=-1,trim=duration=${duration},setpts=PTS-STARTPTS,fps=25[v${idx}];`;
             }
             inputCount++;
         }
@@ -89,17 +92,15 @@ export async function renderVideo({ scriptId, outputName }: RenderOptions, onPro
         }
         filterChain += `concat=n=${inputCount}:v=1:a=0[vfinal];`;
 
-        // FFmpeg filter string escaping (specifically for movie and ass filters)
-        // Colons must be escaped, and the entire path must be quoted in single quotes
         const filterEscape = (p: string) => `'${p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "'\\\\\\''")}'`;
 
-        // Add Watermark Logic (fade in after 2-3s)
+        // Add Watermark Logic
         const relativeLogoPath = 'public/logo.png';
         const relativeAssPath = assPath.replace(/\\/g, '/');
 
         if (fs.existsSync(path.join(process.cwd(), relativeLogoPath))) {
             filterChain += `movie=${filterEscape(relativeLogoPath)}[logo];`;
-            filterChain += `[logo]scale=200:-1,format=rgba,colorchannelmixer=aa=0.4[logostyled];`;
+            filterChain += `[logo]scale=${isVertical ? 300 : 200}:-1,format=rgba,colorchannelmixer=aa=0.4[logostyled];`;
             filterChain += `[vfinal][logostyled]overlay=W-w-50:50:enable='gt(t,2)'[vbranded];`;
             filterChain += `[vbranded]ass=${filterEscape(relativeAssPath)}[outv]`;
         } else {
@@ -120,7 +121,7 @@ export async function renderVideo({ scriptId, outputName }: RenderOptions, onPro
                     '-shortest'
                 ])
                 .on('start', (cmd) => log(`FFmpeg started: ${cmd}`))
-                .on('progress', (p) => log(`Rendering: ${Math.round(p.percent || 0)}% done`))
+                .on('progress', (p) => log(`Rendering ${aspectRatio}: ${Math.round(p.percent || 0)}% done`))
                 .on('error', (err) => {
                     log(`FFmpeg error: ${err.message}`);
                     reject(err);
@@ -144,7 +145,7 @@ export async function renderVideo({ scriptId, outputName }: RenderOptions, onPro
  * Generates an ASS (Advanced Substation Alpha) file for high-end captions.
  * Supports Primary, Secondary, and Emphasis styles with the 300ms lag.
  */
-async function generateASS(script: any, dir: string) {
+async function generateASS(script: any, dir: string, width: number, height: number) {
     const fontName = "Charter"; // FFmpeg font name for the TTC
     const primaryColor = "&H00F5F5F5"; // Off-white (BGR)
     const emphasisColor = "&H0037AFD4"; // Muted Amber (#D4AF37)
@@ -153,15 +154,15 @@ async function generateASS(script: any, dir: string) {
     let assContent = `[Script Info]
 Title: UA Authoritative Captions
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1080
+PlayResX: ${width}
+PlayResY: ${height}
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Primary,${fontName},64,${primaryColor},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,80,80,180,1
-Style: Secondary,${fontName},42,${secondaryColor},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.5,0,2,80,80,130,1
-Style: Emphasis,${fontName},64,${emphasisColor},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,2,0,2,80,80,180,1
+Style: Primary,${fontName},64,${primaryColor},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,80,80,${height === 1920 ? 800 : 180},1
+Style: Secondary,${fontName},42,${secondaryColor},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.5,0,2,80,80,${height === 1920 ? 750 : 130},1
+Style: Emphasis,${fontName},64,${emphasisColor},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,2,0,2,80,80,${height === 1920 ? 800 : 180},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

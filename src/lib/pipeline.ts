@@ -327,7 +327,7 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
     return { success: true };
 }
 
-export async function runRenderPipeline(scriptId: string) {
+export async function runRenderPipeline(scriptId: string, aspectRatio?: string) {
     const log = (msg: string) => {
         const line = `[${new Date().toISOString()}] [RENDER] ${msg}\n`;
         fs.appendFileSync('scribing.log', line);
@@ -335,7 +335,15 @@ export async function runRenderPipeline(scriptId: string) {
     };
 
     try {
-        log(`STARTING Render Pipeline for script: ${scriptId}`);
+        log(`STARTING Render Pipeline for script: ${scriptId}${aspectRatio ? ` [${aspectRatio}]` : ''}`);
+
+        // Update script with aspect ratio if provided
+        if (aspectRatio) {
+            await prisma.videoScript.update({
+                where: { id: scriptId },
+                data: { aspectRatio }
+            });
+        }
 
         const script = await prisma.videoScript.findUnique({
             where: { id: scriptId },
