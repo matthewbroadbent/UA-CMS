@@ -30,8 +30,7 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-      - media_data:/app/public/media
+      - ./public/media:/app/public/media
 
 volumes:
   pgdata:
-  media_data:

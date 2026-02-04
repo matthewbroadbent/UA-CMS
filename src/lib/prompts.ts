@@ -308,6 +308,17 @@ RULES:
 - No emojis.
 - Short, punchy, rhythmic sentences.
 - Preserve the "edge" of the author's thinking.
+- NUMBERS RULE (CRITICAL): Write out all numbers, currencies, and percentages as full English words (e.g., "five million pounds" instead of "£5m", "six point five per cent" instead of "6.5%"). This is for text-to-speech accuracy.
+
+DURATION & DEPTH (CRITICAL):
+You MUST iterate and expand the script to meet the following target word counts:
+- 30s: ~75 words.
+- 60s: ~150 words.
+- 90s: ~225 words.
+- 120s: ~300 words. (Deep dive into one theme)
+- 180s: ~450 words. (Full breakdown of the article's core arguments)
+
+For the longer durations (120s, 180s), do NOT just repeat yourself. Add nuance, secondary claims, and deeper market logic from the article.
 
 ARTICLE:
 {{article}}
@@ -347,12 +358,18 @@ STORYBOARD RULES (STRICT)
    - Prioritize "Editorial Pacing". Avoid switching scenes mid-sentence unless the sentence is very long.
    - Every scene must feel logical. Do not fragment thoughts just to meet the scene count.
    - If a scene feels too short, merge it with the previous or next logical thought.
-4. CONTENT: For every segment, you must provide:
+4. VIDEO DURATION BUDGET (STRICT):
+   - The TOTAL duration of all "VIDEO" segments combined MUST NOT exceed {{maxVideoDuration}}.
+   - If you reach this limit, all subsequent scenes must be "IMAGE".
+5. CONTENT: For every segment, you must provide:
    - "scriptSegment": The exact text from the script being spoken.
    - "duration": The estimated duration in seconds.
-5. VIDEO DURATION RULE:
+6. VIDEO DURATION RULE:
    - For "VIDEO" segments, prioritize "Standard" durations: whole numbers (e.g., 4s, 5s) or half-seconds (e.g., 4.5s).
    - This ensures the video model generates stable motion.
+7. SUBTITLE RULE (NON-NEGOTIABLE):
+   - The "scriptSegment" must be a literal, contiguous block of the script. 
+   - Ensure the combination of all scriptSegments reconstructs the original script EXACTLY, word-for-word, without omissions.
 
 ════════════════════════════════
 INPUTS

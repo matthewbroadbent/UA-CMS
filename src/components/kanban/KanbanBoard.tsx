@@ -50,16 +50,40 @@ export default function KanbanBoard() {
         fetchItems();
     }, []);
 
+    // Add polling for rendering items
+    useEffect(() => {
+        const hasRendering = items.some(item =>
+            item.scripts?.some((s: any) => s.status === 'RENDERING')
+        );
+
+        if (hasRendering || isProcessing) {
+            const interval = setInterval(fetchItems, 5000);
+            return () => clearInterval(interval);
+        }
+    }, [items, isProcessing]);
+
+    const [pendingMoves, setPendingMoves] = useState<Set<string>>(new Set());
+
     const fetchItems = async () => {
         try {
             const res = await fetch('/api/kanban');
             const data = await res.json();
-            setItems(data);
 
-            // If an item is selected, refresh its data too
+            // Only update items that aren't currently in a pending move transition
+            setItems(prev => {
+                const pendingIds = new Set(pendingMoves);
+                return data.map((newItem: any) => {
+                    if (pendingIds.has(newItem.id)) {
+                        const existing = prev.find(p => p.id === newItem.id);
+                        return existing || newItem;
+                    }
+                    return newItem;
+                });
+            });
+
             if (selectedItem) {
                 const refreshedItem = data.find((i: any) => i.id === selectedItem.id);
-                if (refreshedItem) {
+                if (refreshedItem && !pendingMoves.has(selectedItem.id)) {
                     setSelectedItem(refreshedItem);
                 }
             }
@@ -82,6 +106,7 @@ export default function KanbanBoard() {
         const originalItems = [...items];
         const originalSelectedItem = selectedItem ? { ...selectedItem } : null;
 
+        setPendingMoves(prev => new Set(prev).add(id));
         setItems(prev => prev.map(item => item.id === id ? { ...item, status: nextStatus } : item));
         if (selectedItem && selectedItem.id === id) {
             setSelectedItem((prev: any) => ({ ...prev, status: nextStatus }));
@@ -101,13 +126,19 @@ export default function KanbanBoard() {
                 throw new Error(errData.error || 'Failed to move stage');
             }
 
+            // Move is complete, but we keep it in pending until the next fetch confirms it
             await fetchItems();
         } catch (e: any) {
             console.error('Failed to move stage', e);
-            setItems(originalItems); // Rollback board
-            if (originalSelectedItem) setSelectedItem(originalSelectedItem); // Rollback modal
+            setItems(originalItems);
+            if (originalSelectedItem) setSelectedItem(originalSelectedItem);
             alert(`Movement failed: ${e.message}`);
         } finally {
+            setPendingMoves(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
             setIsProcessing(false);
         }
     };
@@ -117,16 +148,35 @@ export default function KanbanBoard() {
         if (prevIdx < 0) return;
 
         const nextStatus = STAGES[prevIdx].id;
+
+        // Optimistic UI update
+        const originalItems = [...items];
+        setItems(prev => prev.map(item => item.id === id ? { ...item, status: nextStatus } : item));
+
+        setIsProcessing(true);
         try {
-            await fetch('/api/kanban/move', {
+            const res = await fetch('/api/kanban/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, status: nextStatus }),
             });
-            fetchItems();
-            if (selectedItem?.id === id) setSelectedItem(null);
-        } catch (e) {
+
+            if (!res.ok) {
+                throw new Error('Failed to roll back');
+            }
+
+            await fetchItems();
+            if (selectedItem?.id === id) {
+                // Refresh the modal item instead of closing it
+                const updatedItem = items.find(i => i.id === id);
+                if (updatedItem) setSelectedItem({ ...updatedItem, status: nextStatus });
+            }
+        } catch (e: any) {
             console.error('Failed to move back', e);
+            setItems(originalItems);
+            alert(`Rollback failed: ${e.message}`);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -227,7 +277,8 @@ export default function KanbanBoard() {
                                         onClick={() => setSelectedItem(item)}
                                         draggable
                                         onDragEnd={(e: any, info: any) => {
-                                            if (info.offset.x > 100) moveStage(item.id, item.status);
+                                            if (info.offset.x > 150) moveStage(item.id, item.status);
+                                            else if (info.offset.x < -150) moveBack(item.id, item.status);
                                         }}
                                     />
                                 ))}
@@ -683,11 +734,11 @@ function ItemDetail({
                                         {script.audioUrl && (
                                             <button
                                                 onClick={() => handleRender(script.id)}
-                                                disabled={isRendering[script.id]}
-                                                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+                                                disabled={isRendering[script.id] || script.status === 'RENDERING'}
+                                                className={`px-6 py-3 ${script.status === 'RENDERING' ? 'bg-indigo-500' : 'bg-emerald-500 hover:bg-emerald-600'} disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-2 shadow-lg ${script.status === 'RENDERING' ? 'shadow-indigo-500/20' : 'shadow-emerald-500/20'}`}
                                             >
-                                                {isRendering[`${script.id}_success`] ? <CheckIcon size={14} strokeWidth={4} /> : (isRendering[script.id] ? <RefreshCwIcon size={14} className="animate-spin" /> : <ZapIcon size={14} fill="currentColor" />)}
-                                                {isRendering[`${script.id}_success`] ? 'Sent ✓' : (isRendering[script.id] ? 'Rendering...' : 'Render Master')}
+                                                {isRendering[`${script.id}_success`] ? <CheckIcon size={14} strokeWidth={4} /> : (isRendering[script.id] || script.status === 'RENDERING' ? <RefreshCwIcon size={14} className="animate-spin" /> : <ZapIcon size={14} fill="currentColor" />)}
+                                                {isRendering[`${script.id}_success`] ? 'Sent ✓' : (isRendering[script.id] || script.status === 'RENDERING' ? 'Rendering...' : 'Render Master')}
                                             </button>
                                         )}
                                         {!script.audioUrl && script.approved && (
@@ -808,7 +859,7 @@ function KanbanCard({ item, onClick, draggable, onDragEnd }: { item: any, onClic
                 pointerEvents: 'none'
             }}
             drag={draggable ? "x" : false}
-            dragConstraints={{ left: 0, right: 300 }}
+            dragConstraints={{ left: -300, right: 300 }}
             dragElastic={0.1}
             onDragEnd={onDragEnd}
             onClick={onClick}

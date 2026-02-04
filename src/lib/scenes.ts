@@ -32,6 +32,7 @@ PROMPT RULES:
 - Ensure a consistent aesthetic: Moody, corporate but human, high contrast, professional color grading.
 - For VIDEO: Describe movement (slow zoom, pan, tracking shot).
 - For IMAGE: Describe texture and depth (shallow depth of field, 8k resolution, photorealistic).
+- BUDGET RULE: Exactly 25% of the total duration must be "VIDEO". The remaining 75% MUST be "IMAGE".
 
 SCRIPT:
 ${script.hook}
@@ -97,7 +98,7 @@ export async function generateMediaAsset(sceneId: string) {
         try {
             log(`Generating ${scene.type} for scene ${sceneId} (Attempt ${attempt}/${maxRetries})...`);
             const result: any = await fal.subscribe(
-                scene.type === 'VIDEO' ? "fal-ai/hunyuan-video" : "fal-ai/flux/schnell",
+                scene.type === 'VIDEO' ? "fal-ai/veo3.1/fast" : "fal-ai/nano-banana",
                 {
                     input: {
                         prompt: scene.prompt,

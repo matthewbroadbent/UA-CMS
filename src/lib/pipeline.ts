@@ -241,13 +241,15 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
         log(`Effective storyboard length: ${effectiveDuration.toFixed(1)}s | Calculated Scenes: ${totalScenes}`);
         const videoCount = Math.floor(totalScenes * 0.25); // Target ~25% video scenes for cost efficiency
         const imageCount = totalScenes - videoCount;
+        const maxVideoDuration = (effectiveDuration * 0.25).toFixed(1) + "s";
 
         const structPrompt = buildPrompt(structTemplate, {
             duration: `${effectiveDuration.toFixed(1)}s`,
             script: [script.hook, script.script, script.closingLine].filter(Boolean).join('\n\n'),
             sceneCount: totalScenes.toString(),
             videoCount: videoCount.toString(),
-            imageCount: imageCount.toString()
+            imageCount: imageCount.toString(),
+            maxVideoDuration: maxVideoDuration
         });
 
         try {
@@ -300,6 +302,7 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
                         index: s.index,
                         type: s.type,
                         prompt: s.prompt,
+                        scriptSegment: s.scriptSegment, // CRITICAL: Save the spoken text for subtitles
                         duration: s.duration || (effectiveDuration / totalScenes),
                         status: 'COMPLETED'
                     } as any
@@ -340,6 +343,9 @@ export async function runRenderPipeline(scriptId: string) {
         });
 
         if (!script) throw new Error("Script not found");
+
+        // Update status to RENDERING now that we have the object in memory
+        await prisma.$executeRaw`UPDATE "VideoScript" SET "status" = 'RENDERING' WHERE "id" = ${scriptId}`;
 
         // 1. Ensure Voice is Generated
         if (!script.audioUrl) {
@@ -386,17 +392,19 @@ export async function runRenderPipeline(scriptId: string) {
             include: { scenes: { orderBy: { index: 'asc' } } }
         });
 
-        // 3. Ensure all scene Assets are Generated
+        // 3. Ensure all scene Assets are Generated (PARALLEL)
         log(`Checking assets for ${updatedScript!.scenes.length} scenes...`);
-        for (const scene of updatedScript!.scenes) {
+        const assetTasks = updatedScript!.scenes.map(async (scene) => {
             if (!scene.assetUrl) {
-                log(`Generating asset for scene ${scene.index} (${scene.type})...`);
-                await generateMediaAsset(scene.id);
-                await new Promise(r => setTimeout(r, 1000));
+                log(`Queuing parallel generation for scene ${scene.index} (${scene.type})...`);
+                return generateMediaAsset(scene.id);
             } else {
-                log(`Skipping asset generation for scene ${scene.index} (Asset already exists: ${scene.assetUrl.substring(0, 30)}...)`);
+                log(`Skipping asset generation for scene ${scene.index} (Asset already exists)`);
+                return scene.assetUrl;
             }
-        }
+        });
+
+        await Promise.all(assetTasks);
 
         // 4. Final Render
         log(`Executing FFmpeg render...`);
@@ -406,19 +414,14 @@ export async function runRenderPipeline(scriptId: string) {
         }, (msg: string) => log(`[FFMPEG] ${msg}`));
 
         // Update script with final video URL
-        await (prisma as any).videoScript.update({
-            where: { id: scriptId },
-            data: {
-                status: 'RENDERED',
-                videoUrl: videoUrl
-            }
-        });
+        await prisma.$executeRaw`UPDATE "VideoScript" SET "status" = 'RENDERED', "videoUrl" = ${videoUrl} WHERE "id" = ${scriptId}`;
 
         log(`RENDER COMPLETED: ${videoUrl}`);
         return videoUrl;
 
     } catch (error: any) {
         log(`CRITICAL PIPELINE ERROR: ${error.message}`);
+        await prisma.$executeRaw`UPDATE "VideoScript" SET "status" = 'FAILED' WHERE "id" = ${scriptId}`.catch(() => { });
         console.error(error);
         throw error;
     }

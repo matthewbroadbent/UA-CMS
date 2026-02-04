@@ -72,12 +72,13 @@ export async function renderVideo({ scriptId, outputName }: RenderOptions, onPro
 
             if (scene.type === 'IMAGE') {
                 // Ken Burns: Subtle zoom in
-                filterChain += `[${idx}:v]scale=2160:2160,zoompan=z='min(zoom+0.0005,1.2)':d=${Math.ceil(duration * 25)}:s=1080x1080:fps=25[v${idx}];`;
+                // Robust scale to 2160x2160 ensuring we fill the space before zoompan
+                filterChain += `[${idx}:v]scale=2160:2160:force_original_aspect_ratio=increase,crop=2160:2160,zoompan=z='min(zoom+0.0005,1.2)':d=${Math.ceil(duration * 25)}:s=1080x1080:fps=25[v${idx}];`;
             } else {
-                // Video: Scale, Crop 1:1, and Freeze-Pad to exact duration
+                // Video: Scale to fill 1080x1080, Crop 1:1, and Normalize to 25fps
                 // We use loop=-1:size=1:start=-1 to infinitely loop the last frame if the video is too short,
                 // then trim it to the exact duration we need.
-                filterChain += `[${idx}:v]scale=1080:-1,crop=1080:1080,loop=loop=-1:size=1:start=-1,trim=duration=${duration},setpts=PTS-STARTPTS[v${idx}];`;
+                filterChain += `[${idx}:v]scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080,loop=loop=-1:size=1:start=-1,trim=duration=${duration},setpts=PTS-STARTPTS,fps=25[v${idx}];`;
             }
             inputCount++;
         }
