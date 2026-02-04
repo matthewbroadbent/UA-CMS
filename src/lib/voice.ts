@@ -6,12 +6,20 @@ const client = new ElevenLabsClient({
     apiKey: process.env.ELEVENLABS_API_KEY,
 });
 
+/**
+ * Strips Markdown characters and other artifacts that shouldn't be spoken.
+ */
+function sanitizeTextForTTS(text: string): string {
+    return text.replace(/\*/g, '').trim();
+}
+
 export async function generateSpeech(text: string, scriptId: string) {
     try {
+        const sanitizedText = sanitizeTextForTTS(text);
         const audio = await client.textToSpeech.convert(
             process.env.ELEVENLABS_VOICE_ID || "uesuxleIgmNYCdwNrW9s", // Default UA voice
             {
-                text: text,
+                text: sanitizedText,
                 modelId: "eleven_monolingual_v1",
             }
         );

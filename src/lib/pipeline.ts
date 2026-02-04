@@ -181,6 +181,8 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
     return { runId: run.id, outputs };
 }
 
+const countWords = (text: string) => text.trim().split(/\s+/).length;
+
 export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: string[]) {
     const log = (msg: string) => {
         const line = `[${new Date().toISOString()}] ${msg}\n`;
@@ -188,7 +190,7 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
         console.log(msg);
     };
 
-    log(`STARTING Grounded Storyboarding for inquiry: ${inquiryId}`);
+    log(`STARTING Grounded Storyboarding [DENSITY PROTECTION V2.1] for inquiry: ${inquiryId}`);
 
     const inquiry = await prisma.weeklyInquiry.findUnique({
         where: { id: inquiryId },
@@ -217,13 +219,31 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
 
         if (idx > 0) await new Promise(r => setTimeout(r, 2000));
 
-        const durationSec = parseInt(script.durationType) || 30;
-        const totalScenes = Math.ceil(durationSec / 6);
-        const videoCount = 0; // ECONOMY MODE: No videos to bypass cloud stalls
-        const imageCount = totalScenes;
+        // Cleanup any existing scenes for this script to prevent "ghost" data
+        await prisma.scene.deleteMany({ where: { videoScriptId: script.id } });
+
+        const plannedDurationSec = parseInt(script.durationType) || 30;
+        const fullText = [script.hook, script.script, script.closingLine].filter(Boolean).join(' ');
+        const wordCount = countWords(fullText);
+
+        // Estimate audio duration based on ~150 words per minute (2.5 words per second)
+        const estimatedAudioSec = Math.max(10, wordCount / 2.5);
+
+        // Final duration to storyboard for should be the MIN of planned and actual words
+        // We add a small buffer for natural pauses
+        const effectiveDuration = Math.min(plannedDurationSec, estimatedAudioSec + 2);
+
+        // Enforce Density Protection: Target 4-6s per scene
+        // If the script is thin, we reduce the scene count
+        const totalScenes = Math.max(3, Math.floor(effectiveDuration / 4.5));
+
+        log(`Density Check: Word Count: ${wordCount} | Est. Audio: ${estimatedAudioSec.toFixed(1)}s | Planned: ${plannedDurationSec}s`);
+        log(`Effective storyboard length: ${effectiveDuration.toFixed(1)}s | Calculated Scenes: ${totalScenes}`);
+        const videoCount = Math.floor(totalScenes * 0.25); // Target ~25% video scenes for cost efficiency
+        const imageCount = totalScenes - videoCount;
 
         const structPrompt = buildPrompt(structTemplate, {
-            duration: script.durationType,
+            duration: `${effectiveDuration.toFixed(1)}s`,
             script: [script.hook, script.script, script.closingLine].filter(Boolean).join('\n\n'),
             sceneCount: totalScenes.toString(),
             videoCount: videoCount.toString(),
@@ -258,8 +278,15 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
 
                 const groundRes = await generateContent('GEMINI' as LLMProvider, 'gemini-2.0-flash', groundPrompt, { temperature: 0.1 });
 
+                let finalDuration = s.duration || (effectiveDuration / totalScenes);
+                if (s.type === 'VIDEO') {
+                    // Standardize: Snap to nearest 0.5s for video model stability
+                    finalDuration = Math.round(finalDuration * 2) / 2;
+                }
+
                 processedScenes.push({
                     ...s,
+                    duration: finalDuration,
                     prompt: groundRes.text.trim()
                 });
                 log(`Grounding complete for scene ${s.index}`);
@@ -273,9 +300,9 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
                         index: s.index,
                         type: s.type,
                         prompt: s.prompt,
-                        duration: s.duration || (durationSec / totalScenes),
+                        duration: s.duration || (effectiveDuration / totalScenes),
                         status: 'COMPLETED'
-                    } as any // Bypass strict schema check for custom fields if necessary, but checking fields first
+                    } as any
                 }))
             );
 
@@ -382,7 +409,7 @@ export async function runRenderPipeline(scriptId: string) {
         await (prisma as any).videoScript.update({
             where: { id: scriptId },
             data: {
-                status: 'COMPLETED',
+                status: 'RENDERED',
                 videoUrl: videoUrl
             }
         });

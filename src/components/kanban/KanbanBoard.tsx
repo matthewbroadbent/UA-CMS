@@ -23,6 +23,7 @@ import {
     LayersIcon
 } from 'lucide-react';
 import StageEditor from '../editor/StageEditor';
+import ScriptEditor from '../editor/ScriptEditor';
 
 const STAGES = [
     { id: 'PENDING', name: 'Ideation', color: 'bg-slate-500', lightColor: 'bg-slate-50', darkColor: 'dark:bg-slate-900/30', accent: 'border-slate-200' },
@@ -37,6 +38,7 @@ export default function KanbanBoard() {
     const [items, setItems] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedItem, setSelectedItem] = useState<any>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
     const [pipelineConfig, setPipelineConfig] = useState({
         mode: 'STANDARD',
         stage1Model: 'gemini-2.0-flash-exp',
@@ -53,6 +55,14 @@ export default function KanbanBoard() {
             const res = await fetch('/api/kanban');
             const data = await res.json();
             setItems(data);
+
+            // If an item is selected, refresh its data too
+            if (selectedItem) {
+                const refreshedItem = data.find((i: any) => i.id === selectedItem.id);
+                if (refreshedItem) {
+                    setSelectedItem(refreshedItem);
+                }
+            }
         } catch (e) {
             console.error('Failed to fetch items', e);
         } finally {
@@ -60,26 +70,45 @@ export default function KanbanBoard() {
         }
     };
 
-    const moveStage = async (id: string, currentStatus: string, config?: any) => {
-        const nextIdx = STAGES.findIndex(s => s.id === currentStatus) + 1;
-        if (nextIdx >= STAGES.length) return;
+    const moveStage = async (id: string, currentStatus: string, config?: any, targetStatus?: string) => {
+        let nextStatus = targetStatus;
+        if (!nextStatus) {
+            const nextIdx = STAGES.findIndex(s => s.id === currentStatus) + 1;
+            if (nextIdx >= STAGES.length) return;
+            nextStatus = STAGES[nextIdx].id;
+        }
 
-        const nextStatus = STAGES[nextIdx].id;
+        // Optimistic UI update
+        const originalItems = [...items];
+        const originalSelectedItem = selectedItem ? { ...selectedItem } : null;
+
+        setItems(prev => prev.map(item => item.id === id ? { ...item, status: nextStatus } : item));
+        if (selectedItem && selectedItem.id === id) {
+            setSelectedItem((prev: any) => ({ ...prev, status: nextStatus }));
+        }
+
+        setIsProcessing(true);
+
         try {
-            await fetch('/api/kanban/move', {
+            const res = await fetch('/api/kanban/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, status: nextStatus, config }),
             });
-            fetchItems();
-            if (selectedItem?.id === id) {
-                // Refresh selected item
-                const res = await fetch('/api/kanban');
-                const data = await res.json();
-                setSelectedItem(data.find((i: any) => i.id === id));
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || 'Failed to move stage');
             }
-        } catch (e) {
+
+            await fetchItems();
+        } catch (e: any) {
             console.error('Failed to move stage', e);
+            setItems(originalItems); // Rollback board
+            if (originalSelectedItem) setSelectedItem(originalSelectedItem); // Rollback modal
+            alert(`Movement failed: ${e.message}`);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -102,20 +131,37 @@ export default function KanbanBoard() {
     };
 
     const toggleApproval = async (id: string, type: 'article' | 'script', approved: boolean) => {
+        // Optimistic UI update
+        if (selectedItem) {
+            if (type === 'article' && selectedItem.article?.id === id) {
+                setSelectedItem((prev: any) => ({
+                    ...prev,
+                    article: { ...prev.article, approved }
+                }));
+            } else if (type === 'script' && selectedItem.scripts) {
+                setSelectedItem((prev: any) => ({
+                    ...prev,
+                    scripts: prev.scripts.map((s: any) => s.id === id ? { ...s, approved } : s)
+                }));
+            }
+        }
+
         try {
-            await fetch('/api/content/approve', {
+            const res = await fetch('/api/kanban/approve', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, type, approved }),
             });
-            fetchItems();
-            if (selectedItem) {
-                const res = await fetch('/api/kanban');
-                const data = await res.json();
-                setSelectedItem(data.find((i: any) => i.id === selectedItem.id));
+
+            if (!res.ok) {
+                throw new Error('Failed to toggle approval');
             }
+
+            fetchItems();
         } catch (e) {
             console.error('Failed to approve', e);
+            // Rollback on failure if needed, but fetchItems() usually handles it
+            fetchItems();
         }
     };
 
@@ -179,7 +225,10 @@ export default function KanbanBoard() {
                                         key={item.id}
                                         item={item}
                                         onClick={() => setSelectedItem(item)}
-                                        onAction={() => setSelectedItem(item)}
+                                        draggable
+                                        onDragEnd={(e: any, info: any) => {
+                                            if (info.offset.x > 100) moveStage(item.id, item.status);
+                                        }}
                                     />
                                 ))}
                                 {stageItems.length === 0 && (
@@ -193,6 +242,23 @@ export default function KanbanBoard() {
                     );
                 })}
             </div>
+
+            <AnimatePresence>
+                {isProcessing && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed bottom-8 right-8 bg-black dark:bg-white text-white dark:text-black px-6 py-4 rounded-2xl shadow-2xl z-50 flex items-center gap-4 border border-white/20"
+                    >
+                        <RefreshCwIcon className="animate-spin text-indigo-500" size={20} />
+                        <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest">System Processing</p>
+                            <p className="text-[9px] opacity-60 font-medium">Intelligence Engine is active. Stand by.</p>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <AnimatePresence mode="wait">
                 {selectedItem && (
@@ -214,13 +280,14 @@ export default function KanbanBoard() {
                             <ItemDetail
                                 item={selectedItem}
                                 onClose={() => setSelectedItem(null)}
-                                onMove={(config) => moveStage(selectedItem.id, selectedItem.status, config)}
+                                onMove={(config, targetId) => moveStage(selectedItem.id, selectedItem.status, config, targetId)}
                                 onMoveBack={() => moveBack(selectedItem.id, selectedItem.status)}
                                 onApprove={toggleApproval}
                                 onRefresh={fetchItems}
                                 pipelineConfig={pipelineConfig}
                                 setPipelineConfig={setPipelineConfig}
                                 onRegenerate={(config) => moveStage(selectedItem.id, 'PENDING', config)}
+                                isProcessing={isProcessing}
                             />
                         </motion.div>
                     </motion.div>
@@ -233,21 +300,22 @@ export default function KanbanBoard() {
 interface ItemDetailProps {
     item: any;
     onClose: () => void;
-    onMove: (config?: any) => void;
+    onMove: (config?: any, targetStatus?: string) => void;
     onMoveBack: () => void;
     onApprove: (id: string, type: 'article' | 'script', approved: boolean) => void;
     onRefresh: () => void;
     pipelineConfig: any;
     setPipelineConfig: (config: any) => void;
     onRegenerate: (config: any) => void;
+    isProcessing: boolean;
 }
 
 function ItemDetail({
     item, onClose, onMove, onMoveBack, onApprove, onRefresh,
-    pipelineConfig, setPipelineConfig, onRegenerate
+    pipelineConfig, setPipelineConfig, onRegenerate, isProcessing
 }: ItemDetailProps) {
     const statusInfo = STAGES.find(s => s.id === item.status);
-    const [editingPart, setEditingPart] = useState<{ type: 'article' | 'script', id: string, content: string } | null>(null);
+    const [editingPart, setEditingPart] = useState<{ type: 'article' | 'script' | 'inquiry' | 'full_script', id: string, content: any, field?: string } | null>(null);
     const [isMoving, setIsMoving] = useState(false);
     const [isScribing, setIsScribing] = useState(false);
     const [isRendering, setIsRendering] = useState<Record<string, boolean>>({});
@@ -322,17 +390,50 @@ function ItemDetail({
         }
     };
 
-    const handleSaveEdit = async (content: string) => {
+    const handleGenerateVoice = async () => {
+        setIsMoving(true);
+        try {
+            await onMove(pipelineConfig, 'VOICE');
+        } finally {
+            setIsMoving(false);
+        }
+    };
+
+    const handleSaveInquiry = async (content: string, field: string = 'thinking') => {
+        try {
+            await fetch('/api/inquiry/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: item.id,
+                    [field]: content
+                }),
+            });
+            setEditingPart(null);
+            onRefresh();
+        } catch (e) {
+            console.error('Failed to save inquiry', e);
+        }
+    };
+
+    const handleSaveEdit = async (content: any) => {
         if (!editingPart) return;
+
+        if (editingPart.type === 'inquiry') {
+            return handleSaveInquiry(content, editingPart.field);
+        }
+
+        const type = editingPart.type === 'full_script' ? 'script' : editingPart.type;
 
         try {
             await fetch('/api/content/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: editingPart.type,
+                    type,
                     id: editingPart.id,
-                    content
+                    content,
+                    field: editingPart.field
                 }),
             });
             setEditingPart(null);
@@ -357,11 +458,19 @@ function ItemDetail({
                     </div>
                 </div>
                 <div className="flex-1 p-8 overflow-y-auto">
-                    <StageEditor
-                        initialContent={editingPart.content}
-                        onSave={handleSaveEdit}
-                        title={`Editing ${editingPart.type === 'article' ? 'Substack Article' : 'Video Script'}`}
-                    />
+                    {editingPart.type === 'full_script' ? (
+                        <ScriptEditor
+                            script={editingPart.content}
+                            onSave={handleSaveEdit}
+                            onCancel={() => setEditingPart(null)}
+                        />
+                    ) : (
+                        <StageEditor
+                            initialContent={editingPart.content}
+                            onSave={handleSaveEdit}
+                            title={`Editing ${editingPart.type === 'article' ? 'Substack Article' : editingPart.type === 'script' ? 'Video Script' : (editingPart.field || 'Raw Data')}`}
+                        />
+                    )}
                 </div>
             </div>
         );
@@ -370,11 +479,11 @@ function ItemDetail({
     return (
         <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-y-auto custom-scrollbar">
             <div className="p-8 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10">
-                <div>
+                <div className="max-w-[80%]">
                     <span className="text-[10px] font-black font-mono text-slate-400 uppercase tracking-widest block mb-2">{item.uaId}</span>
-                    <h2 className="text-2xl font-black dark:text-white tracking-tighter uppercase">{item.theme}</h2>
+                    <h2 className="text-xl font-black dark:text-white tracking-tighter uppercase leading-tight line-clamp-2">{item.theme}</h2>
                 </div>
-                <button onClick={onClose} className="p-3 bg-white dark:bg-slate-800 shadow-xl shadow-black/5 hover:scale-110 rounded-2xl transition-all">
+                <button onClick={onClose} className="p-3 bg-white dark:bg-slate-800 shadow-xl shadow-black/5 hover:scale-110 rounded-2xl transition-all shrink-0">
                     <PlusIcon size={24} className="rotate-45 text-slate-400" />
                 </button>
             </div>
@@ -410,7 +519,24 @@ function ItemDetail({
                         </div>
                     </div>
 
-                    {item.status === 'MEDIA' && (
+                    {(item.status === 'VOICE' || item.status === 'MEDIA') && item.scripts?.some((s: any) => s.approved && !s.audioUrl) && (
+                        <div className="mt-8 p-6 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800 rounded-[2rem] flex items-center justify-between">
+                            <div>
+                                <h4 className="text-[12px] font-black uppercase tracking-[0.3em] text-indigo-500">Voiceover Pipeline</h4>
+                                <p className="text-[10px] text-slate-400 mt-1 font-medium tracking-wide">Ready to transform approved scripts into cinematic audio.</p>
+                            </div>
+                            <button
+                                onClick={handleGenerateVoice}
+                                disabled={isMoving}
+                                className="px-6 py-2.5 bg-indigo-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all flex items-center gap-2 shadow-lg shadow-indigo-500/20"
+                            >
+                                {isMoving ? <RefreshCwIcon size={14} className="animate-spin" /> : <MicIcon size={14} />}
+                                Generate Audio
+                            </button>
+                        </div>
+                    )}
+
+                    {['MEDIA', 'FINAL_RENDER', 'PUBLISHED'].includes(item.status) && (
                         <div className="mt-8 p-6 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-[2rem]">
                             <div className="flex items-center justify-between mb-6">
                                 <div>
@@ -442,6 +568,66 @@ function ItemDetail({
                             </div>
                         </div>
                     )}
+                </div>
+
+                {/* Raw Interrogation Section */}
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-3">
+                            <MicIcon className="text-slate-400" size={20} />
+                            <h3 className="text-sm font-black uppercase tracking-[0.3em] text-slate-400">Sunday Interrogation Data</h3>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white dark:bg-slate-800/20 p-6 rounded-[2rem] border border-white dark:border-slate-800 shadow-sm group">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Thinking</h4>
+                                <button
+                                    onClick={() => setEditingPart({ type: 'inquiry', id: item.id, content: item.thinking || '', field: 'thinking' })}
+                                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                                >
+                                    <Edit3Icon size={14} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <p className="text-[13px] text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{item.thinking || 'No thinking provided.'}</p>
+                        </div>
+                        <div className="bg-white dark:bg-slate-800/20 p-6 rounded-[2rem] border border-white dark:border-slate-800 shadow-sm group">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Reality</h4>
+                                <button
+                                    onClick={() => setEditingPart({ type: 'inquiry', id: item.id, content: item.reality || '', field: 'reality' })}
+                                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                                >
+                                    <Edit3Icon size={14} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <p className="text-[13px] text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{item.reality || 'No reality provided.'}</p>
+                        </div>
+                        <div className="bg-white dark:bg-slate-800/20 p-6 rounded-[2rem] border border-white dark:border-slate-800 shadow-sm group">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Rant</h4>
+                                <button
+                                    onClick={() => setEditingPart({ type: 'inquiry', id: item.id, content: item.rant || '', field: 'rant' })}
+                                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                                >
+                                    <Edit3Icon size={14} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <p className="text-[13px] text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{item.rant || 'No rant provided.'}</p>
+                        </div>
+                        <div className="bg-red-50/30 dark:bg-red-900/5 p-6 rounded-[2rem] border border-red-100 dark:border-red-900/10 shadow-sm group">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-red-400 ml-1">Nuclear</h4>
+                                <button
+                                    onClick={() => setEditingPart({ type: 'inquiry', id: item.id, content: item.nuclear || '', field: 'nuclear' })}
+                                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-100/50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                                >
+                                    <Edit3Icon size={14} className="text-red-400" />
+                                </button>
+                            </div>
+                            <p className="text-[13px] text-red-600 dark:text-red-300 whitespace-pre-wrap leading-relaxed">{item.nuclear || 'No nuclear option.'}</p>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Article View */}
@@ -494,14 +680,21 @@ function ItemDetail({
                                         {script.approved && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1"><CheckIcon size={12} strokeWidth={4} /> Production Ready</span>}
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <button
-                                            onClick={() => handleRender(script.id)}
-                                            disabled={isRendering[script.id]}
-                                            className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
-                                        >
-                                            {isRendering[`${script.id}_success`] ? <CheckIcon size={14} strokeWidth={4} /> : (isRendering[script.id] ? <RefreshCwIcon size={14} className="animate-spin" /> : <ZapIcon size={14} fill="currentColor" />)}
-                                            {isRendering[`${script.id}_success`] ? 'Sent ✓' : (isRendering[script.id] ? 'Rendering...' : 'Render Master')}
-                                        </button>
+                                        {script.audioUrl && (
+                                            <button
+                                                onClick={() => handleRender(script.id)}
+                                                disabled={isRendering[script.id]}
+                                                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+                                            >
+                                                {isRendering[`${script.id}_success`] ? <CheckIcon size={14} strokeWidth={4} /> : (isRendering[script.id] ? <RefreshCwIcon size={14} className="animate-spin" /> : <ZapIcon size={14} fill="currentColor" />)}
+                                                {isRendering[`${script.id}_success`] ? 'Sent ✓' : (isRendering[script.id] ? 'Rendering...' : 'Render Master')}
+                                            </button>
+                                        )}
+                                        {!script.audioUrl && script.approved && (
+                                            <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 text-[9px] font-black uppercase tracking-widest rounded-lg border border-indigo-100 dark:border-indigo-800 flex items-center gap-2">
+                                                <RefreshCwIcon size={10} className="animate-spin" /> {(isProcessing && (item.status === 'VOICE' || item.status === 'MEDIA')) ? 'Processing...' : 'Queued for Voice'}
+                                            </div>
+                                        )}
                                         <button
                                             onClick={() => onApprove(script.id, 'script', !script.approved)}
                                             className={`p-3 rounded-xl transition-all ${script.approved
@@ -512,18 +705,26 @@ function ItemDetail({
                                             <CheckCircleIcon size={20} />
                                         </button>
                                         <button
-                                            onClick={() => setEditingPart({ type: 'script', id: script.id, content: script.script })}
-                                            className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-200 transition-all"
+                                            onClick={() => setEditingPart({ type: 'full_script', id: script.id, content: script })}
+                                            className="p-3 rounded-xl transition-all bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200"
                                         >
                                             <Edit3Icon size={20} />
                                         </button>
                                     </div>
                                 </div>
-                                <div className="text-xl font-black text-slate-900 dark:text-white leading-tight mb-4 tracking-tight">
-                                    "{script.hook}"
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="text-xl font-black text-slate-900 dark:text-white leading-tight tracking-tight">
+                                        "{script.hook}"
+                                    </div>
                                 </div>
-                                <div className="text-[14px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                                <div className="text-[14px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium mb-6">
                                     {script.script}
+                                </div>
+                                <div className="flex items-center justify-between mt-4 py-3 border-t border-slate-100 dark:border-slate-800">
+                                    <div className="text-[12px] text-slate-400 italic font-medium">
+                                        <span className="font-black uppercase tracking-widest text-[9px] not-italic mr-2">Outro:</span>
+                                        {script.closingLine || 'No closing line.'}
+                                    </div>
                                 </div>
                                 {script.videoUrl && (
                                     <div className="mt-8 overflow-hidden rounded-[2rem] border-4 border-white dark:border-slate-700 shadow-2xl relative group">
@@ -590,7 +791,7 @@ function ItemDetail({
     );
 }
 
-function KanbanCard({ item, onClick, onAction }: { item: any, onClick: () => void, onAction: () => void }) {
+function KanbanCard({ item, onClick, draggable, onDragEnd }: { item: any, onClick: () => void, draggable?: boolean, onDragEnd?: (e: any, info: any) => void }) {
     const stage = STAGES.find(s => s.id === item.status);
 
     return (
@@ -600,8 +801,18 @@ function KanbanCard({ item, onClick, onAction }: { item: any, onClick: () => voi
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9 }}
             whileHover={{ y: -5, scale: 1.02 }}
+            whileDrag={{
+                scale: 1.1,
+                zIndex: 99999,
+                boxShadow: "0 40px 100px rgba(0,0,0,0.5)",
+                pointerEvents: 'none'
+            }}
+            drag={draggable ? "x" : false}
+            dragConstraints={{ left: 0, right: 300 }}
+            dragElastic={0.1}
+            onDragEnd={onDragEnd}
             onClick={onClick}
-            className="p-5 bg-white dark:bg-slate-800 rounded-[2rem] shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-white dark:border-slate-700 cursor-pointer group mb-2"
+            className="p-5 bg-white dark:bg-slate-800 rounded-[2rem] shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-white dark:border-slate-700 cursor-pointer group mb-2 active:cursor-grabbing relative z-10"
         >
             <div className="flex justify-between items-start mb-4">
                 <span className="text-[9px] font-black font-mono text-slate-300 uppercase tracking-[0.2em]">{item.uaId}</span>
@@ -624,7 +835,7 @@ function KanbanCard({ item, onClick, onAction }: { item: any, onClick: () => voi
                     {item.scripts?.length > 0 && item.scripts.some((s: any) => s.audioUrl) && <div className="p-1.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-purple-500"><MicIcon size={12} /></div>}
                     {item.scripts?.length > 0 && item.scripts.some((s: any) => s.videoUrl) && <div className="p-1.5 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg text-emerald-500"><VideoIcon size={12} /></div>}
                 </div>
-                <div className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${stage?.color} text-white shadow-lg shadow-${stage?.color?.split('-')[1]}-500/20`}>
+                <div className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${stage?.color} text-white shadow-lg shadow-black/10`}>
                     {stage?.name}
                 </div>
             </div>

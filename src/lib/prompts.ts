@@ -343,14 +343,21 @@ STORYBOARD RULES (STRICT)
 2. DISTRIBUTION: 
    - Exactly {{videoCount}} segments must be "VIDEO".
    - Exactly {{imageCount}} segments must be "IMAGE".
-3. CONTENT: For every segment, you must provide:
+3. PACING RULE:
+   - Prioritize "Editorial Pacing". Avoid switching scenes mid-sentence unless the sentence is very long.
+   - Every scene must feel logical. Do not fragment thoughts just to meet the scene count.
+   - If a scene feels too short, merge it with the previous or next logical thought.
+4. CONTENT: For every segment, you must provide:
    - "scriptSegment": The exact text from the script being spoken.
    - "duration": The estimated duration in seconds.
+5. VIDEO DURATION RULE:
+   - For "VIDEO" segments, prioritize "Standard" durations: whole numbers (e.g., 4s, 5s) or half-seconds (e.g., 4.5s).
+   - This ensures the video model generates stable motion.
 
 ════════════════════════════════
 INPUTS
 ════════════════════════════════
-Duration: {{duration}}
+Planned Duration: {{duration}}
 Full Script:
 {{script}}
 

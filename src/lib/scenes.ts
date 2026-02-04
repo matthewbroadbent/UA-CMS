@@ -90,53 +90,66 @@ export async function generateMediaAsset(sceneId: string) {
         data: { status: 'PROCESSING' }
     });
 
-    try {
-        log(`Generating ${scene.type} for scene ${sceneId}...`);
-        const result: any = await fal.subscribe(
-            scene.type === 'VIDEO' ? "fal-ai/hunyuan-video" : "fal-ai/flux/schnell",
-            {
-                input: {
-                    prompt: scene.prompt,
-                },
-                logs: true,
-                onQueueUpdate: (update: any) => {
-                    log(`Scene ${sceneId} queue status: ${update.status}`);
+    let lastError: any = null;
+    const maxRetries = 3;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            log(`Generating ${scene.type} for scene ${sceneId} (Attempt ${attempt}/${maxRetries})...`);
+            const result: any = await fal.subscribe(
+                scene.type === 'VIDEO' ? "fal-ai/hunyuan-video" : "fal-ai/flux/schnell",
+                {
+                    input: {
+                        prompt: scene.prompt,
+                    },
+                    logs: true,
+                    onQueueUpdate: (update: any) => {
+                        log(`Scene ${sceneId} queue status: ${update.status}`);
+                    }
                 }
+            );
+
+            // Harden extraction (handles both flat and nested 'data' structures)
+            let mediaUrl = '';
+            const data = result.data || result; // Use nested data if available, else fallback to top-level
+
+            if (scene.type === 'VIDEO') {
+                mediaUrl = data.video?.url || data.url || '';
+            } else {
+                mediaUrl = data.images?.[0]?.url || data.image?.url || data.url || '';
             }
-        );
 
-        // Harden extraction (handles both flat and nested 'data' structures)
-        let mediaUrl = '';
-        const data = result.data || result; // Use nested data if available, else fallback to top-level
-
-        if (scene.type === 'VIDEO') {
-            mediaUrl = data.video?.url || data.url || '';
-        } else {
-            mediaUrl = data.images?.[0]?.url || data.image?.url || data.url || '';
-        }
-
-        if (!mediaUrl) {
-            log(`ERROR: Could not find media URL in Fal response: ${JSON.stringify(result)}`);
-            throw new Error(`Media URL missing in Fal response for scene ${sceneId}`);
-        }
-
-        log(`Asset generated successfully for scene ${sceneId}: ${mediaUrl}`);
-
-        await prisma.scene.update({
-            where: { id: sceneId },
-            data: {
-                assetUrl: mediaUrl,
-                status: 'COMPLETED'
+            if (!mediaUrl) {
+                log(`ERROR: Could not find media URL in Fal response: ${JSON.stringify(result)}`);
+                throw new Error(`Media URL missing in Fal response for scene ${sceneId}`);
             }
-        });
 
-        return mediaUrl;
-    } catch (error) {
-        console.error(`Fal error for scene ${sceneId}:`, error);
-        await prisma.scene.update({
-            where: { id: sceneId },
-            data: { status: 'FAILED' }
-        });
-        throw error;
+            log(`Asset generated successfully for scene ${sceneId}: ${mediaUrl}`);
+
+            await prisma.scene.update({
+                where: { id: sceneId },
+                data: {
+                    assetUrl: mediaUrl,
+                    status: 'COMPLETED'
+                }
+            });
+
+            return mediaUrl;
+        } catch (error: any) {
+            lastError = error;
+            log(`ATTEMPT ${attempt} FAILED for scene ${sceneId}: ${error.message}`);
+            if (attempt < maxRetries) {
+                const delay = 2000 * attempt;
+                log(`Retrying in ${delay / 1000}s...`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+        }
     }
+
+    // If we get here, all retries failed
+    await prisma.scene.update({
+        where: { id: sceneId },
+        data: { status: 'FAILED' }
+    });
+    throw lastError;
 }
