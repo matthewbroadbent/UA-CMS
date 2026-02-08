@@ -43,6 +43,10 @@ model WeeklyInquiry {
   article       Article?
   scripts       VideoScript[]
   generationRuns GenerationRun[]
+  
+  // Backwards compatibility/generic link
+  driveOutputs  DriveOutput[]
+  assets        OutputAsset[]
 }
 
 model Article {
@@ -54,8 +58,11 @@ model Article {
   finalContent    String?       @db.Text
   approved        Boolean       @default(false)
   status          Status        @default(EDITORIAL) // Managed within the editorial stage
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  driveOutputs    DriveOutput[]
+  assets          OutputAsset[]
 }
 
 model VideoScript {
@@ -79,6 +86,9 @@ model VideoScript {
   
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  driveOutputs    DriveOutput[]
+  assets          OutputAsset[]
 
   @@unique([weeklyInquiryId, durationType])
 }
@@ -154,5 +164,53 @@ model GenerationOutput {
   tokensUsed      Int?
   costEstimate    Float?
   
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime @default(now())
+}
+
+model DriveOutput {
+  id                String   @id @default(cuid())
+  driveFileId       String   @unique
+  driveWebViewLink  String
+  driveDownloadLink String?
+  fileType          String   // AUDIO, VIDEO, TEXT
+  fileName          String
+  renderId          String   // e.g., scriptId or uaId
+  createdAt         DateTime @default(now())
+  
+  // Relations
+  videoScriptId     String?
+  videoScript       VideoScript? @relation(fields: [videoScriptId], references: [id], onDelete: SetNull)
+  articleId         String?
+  article           Article?     @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  weeklyInquiryId   String?
+  weeklyInquiry     WeeklyInquiry? @relation(fields: [weeklyInquiryId], references: [id], onDelete: SetNull)
+}
+
+model OutputAsset {
+  id                String   @id @default(cuid())
+  provider          String   // drive | supabase
+  kind              String   // AUDIO | VIDEO | TEXT | CAPTIONS | IMAGE
+  fileName          String
+  
+  // Supabase specific
+  bucket            String?
+  objectKey         String?
+  
+  // Drive specific
+  driveFileId       String?  @unique
+  driveWebViewLink  String?
+  driveDownloadLink String?
+  
+  // Generic
+  publicUrl         String?
+  renderId          String   // e.g., scriptId or uaId
+  createdAt         DateTime @default(now())
+
+  // Relations
+  videoScriptId     String?
+  videoScript       VideoScript? @relation(fields: [videoScriptId], references: [id], onDelete: SetNull)
+  articleId         String?
+  article           Article?     @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  weeklyInquiryId   String?
+  weeklyInquiry     WeeklyInquiry? @relation(fields: [weeklyInquiryId], references: [id], onDelete: SetNull)
 }

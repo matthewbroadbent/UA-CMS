@@ -627,6 +627,68 @@ function ItemDetail({
                     )}
                 </div>
 
+                {/* Production Assets Section */}
+                {(item.assets?.length > 0 || item.scripts?.some((s: any) => s.assets?.length > 0)) && (
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 px-2">
+                            <LayersIcon className="text-indigo-500" size={20} />
+                            <h3 className="text-sm font-black uppercase tracking-[0.3em] text-slate-400">Production Assets</h3>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4">
+                            {[...(item.assets || []), ...(item.scripts?.flatMap((s: any) => s.assets) || [])]
+                                .filter(Boolean)
+                                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                                .map((asset: any) => (
+                                    <div key={asset.id} className="bg-white dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between group">
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${asset.kind === 'VIDEO' ? 'bg-emerald-100 text-emerald-600' :
+                                                asset.kind === 'AUDIO' ? 'bg-purple-100 text-purple-600' :
+                                                    asset.kind === 'CAPTIONS' ? 'bg-amber-100 text-amber-600' :
+                                                        'bg-blue-100 text-blue-600'
+                                                }`}>
+                                                {asset.kind === 'VIDEO' ? <VideoIcon size={18} /> :
+                                                    asset.kind === 'AUDIO' ? <MicIcon size={18} /> :
+                                                        asset.kind === 'CAPTIONS' ? <FileTextIcon size={18} /> :
+                                                            <FileTextIcon size={18} />}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-[11px] font-black uppercase tracking-tight text-slate-700 dark:text-slate-200">{asset.fileName}</p>
+                                                    <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-widest ${asset.provider === 'supabase' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                                        {asset.provider}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{asset.kind} • {new Date(asset.createdAt).toLocaleDateString()}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <a
+                                                href={asset.signedUrl || asset.driveWebViewLink || asset.publicUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-400 hover:text-black dark:hover:text-white rounded-xl transition-all border border-slate-100 dark:border-slate-600"
+                                                title="View Asset"
+                                            >
+                                                <ExternalLinkIcon size={16} />
+                                            </a>
+                                            {asset.driveDownloadLink && (
+                                                <a
+                                                    href={asset.driveDownloadLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-400 hover:text-black dark:hover:text-white rounded-xl transition-all border border-slate-100 dark:border-slate-600"
+                                                    title="Download"
+                                                >
+                                                    <DownloadIcon size={16} />
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Raw Interrogation Section */}
                 <div className="space-y-6">
                     <div className="flex items-center justify-between px-2">
@@ -802,7 +864,7 @@ function ItemDetail({
                                             className={`w-full bg-black shadow-inner ${(aspectRatios[script.id] || script.aspectRatio) === '9:16' ? 'aspect-[9/16]' : (aspectRatios[script.id] || script.aspectRatio) === '16:9' ? 'aspect-video' : 'aspect-square'}`}
                                             poster={script.scenes?.[0]?.assetUrl}
                                         >
-                                            <source src={script.videoUrl} type="video/mp4" />
+                                            <source src={script.assets?.find((a: any) => a.kind === 'VIDEO')?.signedUrl || script.videoUrl} type="video/mp4" />
                                             Your browser does not support the video tag.
                                         </video>
                                         <div className="absolute top-4 left-4 pointer-events-none">
@@ -818,7 +880,7 @@ function ItemDetail({
                                     <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-4">
                                         <MicIcon className="text-purple-500" size={20} />
                                         <audio controls className="h-8 flex-1 opacity-80">
-                                            <source src={script.audioUrl} type="audio/mpeg" />
+                                            <source src={script.assets?.find((a: any) => a.kind === 'AUDIO')?.signedUrl || script.audioUrl} type="audio/mpeg" />
                                         </audio>
                                     </div>
                                 )}

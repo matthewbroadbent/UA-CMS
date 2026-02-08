@@ -13,23 +13,24 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
-
 # production
 /build
 
-# misc
-.DS_Store
-*.pem
+# UA CMS Exclusions
+.next/
+tmp/
+*.log
+caches/
+public/media/audio/
+public/media/videos/
+public/media/images/
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-debug.log
+# Credentials
+.env*
+.secrets/
+google-credentials.json
+*.pem
+*.key
 scribing.log
 *.log
 

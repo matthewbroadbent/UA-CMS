@@ -1,6 +1,7 @@
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import fs from "fs";
 import path from "path";
+import { StorageService } from "./storage";
 
 const client = new ElevenLabsClient({
     apiKey: process.env.ELEVENLABS_API_KEY,
@@ -68,6 +69,20 @@ export async function generateSpeech(text: string, scriptId: string) {
         const buffer = Buffer.concat(chunks);
         fs.writeFileSync(filePath, buffer);
         console.log(`Audio saved: ${filePath}`);
+
+        // Upload to Storage (Supabase or Drive)
+        try {
+            const asset = await StorageService.uploadAndRecord({
+                file: buffer,
+                fileName: `${scriptId}_audio.mp3`,
+                kind: 'AUDIO',
+                renderId: scriptId,
+                videoScriptId: scriptId
+            });
+            console.log(`[Storage] Audio uploaded via ${asset.provider}: ${asset.fileName}`);
+        } catch (err) {
+            console.error(`[Storage] Audio upload failed:`, err);
+        }
 
         return `/media/audio/${fileName}`;
     } catch (error) {

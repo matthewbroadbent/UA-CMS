@@ -8,11 +8,11 @@ import path from 'path';
  */
 
 const CONFIG = {
-    maxAgeDays: 8, // Configurable: Delete tmp files older than this
-    maxAgeHours: 0, // Option for more granular cleanup (takes precedence if > 0)
+    maxAgeDays: 2, // Requirements: Delete tmp folders older than 48 hours
+    maxAgeHours: 0,
     logRotation: {
         maxFiles: 5,
-        compress: false // Future expansion
+        compress: false
     },
     targets: {
         tmp: path.join(process.cwd(), 'tmp'),

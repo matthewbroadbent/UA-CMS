@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import https from 'https';
 import { prisma } from './prisma';
+import { StorageService } from './storage';
 
 async function downloadFile(url: string, dest: string, retries = 3): Promise<void> {
     for (let i = 0; i < retries; i++) {
@@ -253,8 +254,38 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
                     log(`Final merge error: ${err.message}`);
                     reject(err);
                 })
-                .on('end', () => {
+                .on('end', async () => {
                     log(`Render complete: ${outputPath}`);
+
+                    // 5. Upload to Storage (Supabase or Drive)
+                    try {
+                        const videoAsset = await StorageService.uploadAndRecord({
+                            file: outputPath,
+                            fileName: `${scriptId}_video.mp4`,
+                            kind: 'VIDEO',
+                            renderId: scriptId,
+                            videoScriptId: scriptId
+                        });
+                        log(`[Storage] Video uploaded via ${videoAsset.provider}: ${videoAsset.fileName}`);
+                    } catch (err) {
+                        console.error(`[Storage] Video upload failed:`, err);
+                    }
+
+                    if (fs.existsSync(assPath)) {
+                        try {
+                            const captionAsset = await StorageService.uploadAndRecord({
+                                file: assPath,
+                                fileName: `${scriptId}_captions.ass`,
+                                kind: 'CAPTIONS',
+                                renderId: scriptId,
+                                videoScriptId: scriptId
+                            });
+                            log(`[Storage] Captions uploaded via ${captionAsset.provider}: ${captionAsset.fileName}`);
+                        } catch (err) {
+                            console.error(`[Storage] Captions upload failed:`, err);
+                        }
+                    }
+
                     cleanupTempFiles(scriptId);
                     resolve(true);
                 })

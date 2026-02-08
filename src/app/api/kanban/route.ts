@@ -1,19 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { StorageService } from '@/lib/storage';
 
-// Forced rebuild to refresh Prisma client
 export async function GET() {
     try {
-        const items = await prisma.weeklyInquiry.findMany({
+        const items = await (prisma as any).weeklyInquiry.findMany({
             include: {
-                article: true,
-                scripts: {
+                article: {
                     include: {
-                        scenes: {
-                            orderBy: {
-                                index: 'asc'
-                            }
-                        }
+                        assets: true
                     }
                 },
                 generationRuns: {
@@ -23,6 +18,19 @@ export async function GET() {
                     orderBy: {
                         createdAt: 'desc'
                     }
+                },
+                driveOutputs: true,
+                assets: true,
+                scripts: {
+                    include: {
+                        scenes: {
+                            orderBy: {
+                                index: 'asc'
+                            }
+                        },
+                        driveOutputs: true,
+                        assets: true
+                    }
                 }
             },
             orderBy: {
@@ -30,7 +38,29 @@ export async function GET() {
             },
         });
 
-        return NextResponse.json(items);
+        // Enrich with signed URLs for Supabase assets
+        const enrichedItems = await Promise.all(items.map(async (item: any) => {
+            const enrichAssets = async (assets: any[]) => {
+                if (!assets) return [];
+                return Promise.all(assets.map(async (asset) => ({
+                    ...asset,
+                    signedUrl: asset.provider === 'supabase' ? await StorageService.getSignedUrl(asset) : asset.driveWebViewLink
+                })));
+            };
+
+            item.assets = await enrichAssets(item.assets);
+            if (item.article) {
+                item.article.assets = await enrichAssets(item.article.assets);
+            }
+            item.scripts = await Promise.all(item.scripts.map(async (script: any) => ({
+                ...script,
+                assets: await enrichAssets(script.assets)
+            })));
+
+            return item;
+        }));
+
+        return NextResponse.json(enrichedItems);
     } catch (error: any) {
         console.error('API Error /api/kanban:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

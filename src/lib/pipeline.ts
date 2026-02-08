@@ -9,6 +9,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import { generateMediaAsset } from './scenes';
 import { renderVideo } from './renderer';
 import { LLMProvider, generateContent } from './providers';
+import { StorageService } from "./storage";
 
 export interface PipelineConfig {
     mode: 'STANDARD' | 'COMPARE';
@@ -157,7 +158,6 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
         outputs.push(output);
     }
 
-    // Update Inquiry with the first output as the primary draft
     if (outputs.length > 0) {
         await (prisma as any).article.upsert({
             where: { weeklyInquiryId: inquiryId },
@@ -171,6 +171,21 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
                 status: 'EDITORIAL'
             }
         });
+
+        // Upload Article to Storage (Supabase or Drive)
+        try {
+            const asset = await StorageService.uploadAndRecord({
+                file: outputs[0].content,
+                fileName: `${inquiry.uaId}_article.md`,
+                kind: 'TEXT',
+                renderId: inquiry.uaId,
+                articleId: (await prisma.article.findUnique({ where: { weeklyInquiryId: inquiryId } }))?.id,
+                weeklyInquiryId: inquiryId
+            });
+            console.log(`[Storage] Article uploaded via ${asset.provider}: ${asset.fileName}`);
+        } catch (err) {
+            console.error(`[Storage] Article upload failed:`, err);
+        }
     }
 
     await (prisma as any).generationRun.update({
@@ -315,6 +330,21 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
                     status: 'MEDIA_GENERATED' as any
                 }
             });
+
+            // Upload Script JSON to Storage (Supabase or Drive)
+            try {
+                const scriptJson = JSON.stringify(script, null, 2);
+                const asset = await StorageService.uploadAndRecord({
+                    file: scriptJson,
+                    fileName: `${script.id}_script.json`,
+                    kind: 'TEXT',
+                    renderId: script.id,
+                    videoScriptId: script.id
+                });
+                console.log(`[Storage] Script JSON uploaded via ${asset.provider}: ${asset.fileName}`);
+            } catch (err) {
+                console.error(`[Storage] Script JSON upload failed:`, err);
+            }
 
             log(`Successfully story-grounded script ${script.id}`);
         } catch (e: any) {
