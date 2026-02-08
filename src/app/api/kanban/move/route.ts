@@ -41,7 +41,7 @@ export async function POST(req: Request) {
                 stage1Provider: 'GEMINI',
                 stage2Models: [
                     process.env.ANTHROPIC_API_KEY
-                        ? { model: 'claude-3-5-sonnet-latest', provider: 'ANTHROPIC' }
+                        ? { model: 'claude-3-5-haiku-20241022', provider: 'ANTHROPIC' }
                         : { model: 'gemini-2.0-flash', provider: 'GEMINI' }
                 ]
             };

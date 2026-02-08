@@ -281,7 +281,7 @@ Research Signal: {{research_brief}}
 ════════════════════════════════
 OUTPUT REQUIREMENT
 ════════════════════════════════
-Return ONLY a valid JSON object. No prose outside the JSON.
+Return ONLY a valid JSON object. No prose outside the JSON. All strings must be properly JSON-escaped (especially double quotes within the article content).
 Schema:
 {
   "article_spine": {

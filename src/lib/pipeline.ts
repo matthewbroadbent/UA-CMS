@@ -154,13 +154,21 @@ async function runSynthesisStage(inquiry: any, researchBrief: any, config: Pipel
         prompt,
         {
             temperature: config.options?.temperature2 || 0.7,
-            maxTokens: 4000,
+            maxTokens: 8192,
             responseMimeType: 'application/json'
         }
     );
 
     const cleaned = result.text.replace(/```json\n?|\n?```/g, '').trim();
-    return JSON.parse(cleaned);
+    try {
+        return JSON.parse(cleaned);
+    } catch (err: any) {
+        console.error("[SYNTHESIS] JSON Parse Error at position:", err.message);
+        console.log("--- RAW SYNTHESIS START ---");
+        console.log(cleaned);
+        console.log("--- RAW SYNTHESIS END ---");
+        throw err;
+    }
 }
 
 async function runResearchStage(inquiry: any) {
