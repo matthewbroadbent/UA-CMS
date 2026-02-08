@@ -30,6 +30,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 debug.log
+scribing.log
+*.log
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -41,8 +43,16 @@ debug.log
 *.tsbuildinfo
 next-env.d.ts
 
+# UA CMS Specific
 /src/generated/prisma
 /public/media/
-scribing.log
+/public/.backup/
 /tmp/
 /brain/
+test_logo.png
+
+# macOS
+.DS_Store
+Icon?
+Icon
+Icon

@@ -1,27 +1,37 @@
-# UA CMS Migration: Current Status & Next Steps
+# 🗺️ Project Roadmap: UA CMS Phase 3
 
-## 📍 Where We Are
-We have successfully transitioned the core logic from your 4 n8n workflows into a unified Next.js/Node.js application. (Note: Upgraded Docker to Node 20 to support Prisma 7).
+We have stabilized the **Sequential Rendering Pipeline** and achieved perfect 1:1, 9:16, and 16:9 renders. The system is now robust and production-ready.
 
-## ✅ Files Completed
-- **Project Foundation**: `docker-compose.yml`, `Dockerfile`, `.devcontainer/devcontainer.json`, `prisma/schema.prisma`.
-- **Kanban UI**: `src/components/kanban/KanbanBoard.tsx`, `src/app/page.tsx`, `src/app/new/page.tsx` (New Inquiry Form).
-- **Editorial Editor**: `src/components/editor/StageEditor.tsx`.
-- **Logical Engines**: 
-    - `src/lib/gemini.ts` (Drafting & Script Generation)
-    - `src/lib/voice.ts` (ElevenLabs Integration)
-    - `src/lib/scenes.ts` (Agentic Scene Planning & Media Prompts)
-    - `src/lib/media.ts` (FFmpeg Stitching Engine with BBC Aesthetic)
-- **API Routes**: `kanban/route.ts`, `kanban/move/route.ts`, `inquiry/route.ts`.
+## ✅ Accomplished in this session:
+1.  **Sequential Rendering Breakthrough**: Refactored `renderer.ts` to render scene-by-scene, eliminating OOM crashes on 60s/HD masters.
+2.  **Visual Quality Lock**: Fix font issues (`DejaVu Serif`), re-enabled High-Impact Ken Burns, and verified full-duration audio sync.
+3.  **UI Sync Fix**: Forced video player refresh via React keys to ensure instant preview of fresh renders.
+4.  **16:9 Support**: Fully implemented widescreen masters for YouTube/X.
 
-## 🚀 The Very Next Step
-**Environment Setup & Initial Run**:
-1.  **API Keys**: Open the [.env](file:///Users/matthewbroadbent1/Desktop/Antigravity%20Projects/UA%20-%20Content%20-%20Video%20and%20Substack/ua-cms/.env) file and add your `GEMINI_API_KEY`, `FAL_KEY`, and `ELEVENLABS` credentials.
-2.  **Database Sync**: Run `npx prisma db push` inside the `ua-cms` directory to create your local database tables.
-3.  **Boot Up**: Run `npm run dev` (or `docker-compose up -d` if your Docker Desktop is running) to see the Kanban board in action.
+## 🚀 The Next Steps (Client Acquisition Phase):
 
-## 📝 Remaining To-Do
-- [x] Connect the **Editorial Editor** to the side panel for live content refinement.
-- [x] Implement the **Fal.ai** image/video generation calls in `src/lib/scenes.ts`.
-- [x] Refine the **FFmpeg** subtitle overlay fonts and implements stitching in `src/lib/media.ts`.
-- [ ] **Final Step**: Deploy the `docker-compose.yml` to your VPS (Instructions in [walkthrough.md](file:///Users/matthewbroadbent1/.gemini/antigravity/brain/59ab133e-efda-4d1a-b430-4981c01172c2/walkthrough.md)).
+### 1. VPS Migration
+- [ ] Transfer the application to the VPS (using the existing `deploy.sh` and production config).
+- [ ] Setup DNS and SSL for remote access.
+- [ ] Configure environment variables for production (Anthropic, Fal, Prisma).
+
+### 2. Google Drive Distribution System
+- [ ] **Remote-First Storage**: Ensure completed videos are uploaded directly to Google Drive.
+- [ ] **Space Optimization**: 
+    -   Videos should **not** sync with the local hard drive (save local disk space).
+    -   Videos should **not** take up permanent space on the VPS (auto-cleanup after upload).
+- [ ] **Organized Hierarchy**: Separate Google Drive directories for:
+    -   **X (Twitter)**
+    -   **Instagram / Facebook**
+    -   **YouTube**
+    -   **LinkedIn**
+
+### 3. Branding & Strategy
+- [ ] Talk to Claire about how to boost brand theme.
+
+## 📝 Files for context on return:
+- [renderer.ts](src/lib/renderer.ts) (The master render logic)
+- [KanbanBoard.tsx](src/components/kanban/KanbanBoard.tsx) (UI for triggering renders)
+- [deploy.sh](deploy.sh) (VPS deployment script)
+
+**Good luck with the client acquisition work! See you when you're back.**

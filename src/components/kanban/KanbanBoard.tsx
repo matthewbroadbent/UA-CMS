@@ -738,7 +738,7 @@ function ItemDetail({
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl gap-1">
-                                            {["1:1", "9:16"].map((ratio) => (
+                                            {["1:1", "9:16", "16:9"].map((ratio) => (
                                                 <button
                                                     key={ratio}
                                                     onClick={() => setAspectRatios(prev => ({ ...prev, [script.id]: ratio }))}
@@ -797,8 +797,9 @@ function ItemDetail({
                                 {script.videoUrl && (
                                     <div className="mt-8 overflow-hidden rounded-[2rem] border-4 border-white dark:border-slate-700 shadow-2xl relative group">
                                         <video
+                                            key={`${script.videoUrl}-${aspectRatios[script.id] || script.aspectRatio}`}
                                             controls
-                                            className="w-full aspect-square bg-black shadow-inner"
+                                            className={`w-full bg-black shadow-inner ${(aspectRatios[script.id] || script.aspectRatio) === '9:16' ? 'aspect-[9/16]' : (aspectRatios[script.id] || script.aspectRatio) === '16:9' ? 'aspect-video' : 'aspect-square'}`}
                                             poster={script.scenes?.[0]?.assetUrl}
                                         >
                                             <source src={script.videoUrl} type="video/mp4" />
