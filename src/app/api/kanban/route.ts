@@ -21,6 +21,11 @@ export async function GET() {
                 },
                 driveOutputs: true,
                 assets: true,
+                textPosts: {
+                    include: {
+                        assets: true
+                    }
+                },
                 scripts: {
                     include: {
                         scenes: {
@@ -55,6 +60,10 @@ export async function GET() {
             item.scripts = await Promise.all(item.scripts.map(async (script: any) => ({
                 ...script,
                 assets: await enrichAssets(script.assets)
+            })));
+            item.textPosts = await Promise.all(item.textPosts.map(async (post: any) => ({
+                ...post,
+                assets: await enrichAssets(post.assets)
             })));
 
             return item;

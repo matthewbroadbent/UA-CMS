@@ -8,6 +8,7 @@ export interface GenerationOptions {
     temperature?: number;
     maxTokens?: number;
     responseMimeType?: string;
+    useSearch?: boolean;
 }
 
 export interface GenerationResult {
@@ -63,7 +64,8 @@ async function generateGemini(modelName: string, prompt: string, options: Genera
             temperature: options.temperature,
             maxOutputTokens: options.maxTokens,
             responseMimeType: options.responseMimeType === 'application/json' ? 'application/json' : 'text/plain'
-        }
+        },
+        tools: options.useSearch ? [{ googleSearchRetrieval: {} }] : undefined
     }, { apiVersion: "v1beta" });
 
     const result = await model.generateContent(prompt);

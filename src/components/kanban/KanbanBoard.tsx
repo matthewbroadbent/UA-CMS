@@ -749,6 +749,91 @@ function ItemDetail({
                     </div>
                 </div>
 
+                {/* Research Insights */}
+                {item.textPosts && item.textPosts[0]?.researchContext && (
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 px-2">
+                            <SparklesIcon className="text-indigo-500" size={20} />
+                            <h3 className="text-sm font-black uppercase tracking-[0.3em] text-slate-400">Strategic Research</h3>
+                        </div>
+                        <div className="bg-white dark:bg-slate-800/40 p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                            {(() => {
+                                try {
+                                    const research = JSON.parse(item.textPosts[0].researchContext);
+                                    return (
+                                        <div className="space-y-6">
+                                            <div>
+                                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Market Context</h4>
+                                                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{research.theme_context}</p>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div>
+                                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Developments</h4>
+                                                    <ul className="space-y-2">
+                                                        {research.market_developments?.map((d: string, i: number) => (
+                                                            <li key={i} className="text-[13px] text-slate-500 dark:text-slate-400 flex gap-2">
+                                                                <span className="text-indigo-500 font-bold">•</span> {d}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Specific Cases</h4>
+                                                    <ul className="space-y-2">
+                                                        {research.specific_cases?.map((c: string, i: number) => (
+                                                            <li key={i} className="text-[13px] text-slate-500 dark:text-slate-400 flex gap-2">
+                                                                <span className="text-indigo-500 font-bold">•</span> {c}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                } catch (e) {
+                                    return <p className="text-xs text-slate-400">Research processing failed.</p>;
+                                }
+                            })()}
+                        </div>
+                    </div>
+                )}
+
+                {/* Narrative Text Posts */}
+                {item.textPosts && item.textPosts.length > 0 && (
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 px-2">
+                            <Share2Icon className="text-blue-500" size={20} />
+                            <h3 className="text-sm font-black uppercase tracking-[0.3em] text-slate-400">Narrative Text Posts</h3>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4">
+                            {item.textPosts.sort((a: any, b: any) => a.index - b.index).map((post: any) => (
+                                <div key={post.id} className="bg-white dark:bg-slate-800/40 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-[10px] font-black font-mono text-slate-400 uppercase tracking-widest">{post.uaId}</span>
+                                            <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${post.approved ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-500'}`}>
+                                                {post.status}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => setEditingPart({ type: 'inquiry', id: post.id, content: post.content, field: 'content' })} // Note: this route might need adjustment but usually we can genericise
+                                                className="p-2 opacity-0 group-hover:opacity-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                                            >
+                                                <Edit3Icon size={14} className="text-slate-400" />
+                                            </button>
+                                            <button className="p-2 opacity-0 group-hover:opacity-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all">
+                                                <CopyIcon size={14} className="text-slate-400" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <p className="text-[13px] text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed italic">{post.content}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Article View */}
                 {item.article && (
                     <div className="space-y-6">

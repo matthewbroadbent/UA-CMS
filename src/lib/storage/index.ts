@@ -33,6 +33,7 @@ export class StorageService {
         videoScriptId?: string;
         articleId?: string;
         weeklyInquiryId?: string;
+        textPostId?: string;
     }) {
         const provider = getStorageProvider();
 
@@ -46,7 +47,7 @@ export class StorageService {
         });
 
         // Save to OutputAsset model
-        const asset = await prisma.outputAsset.create({
+        const asset = await (prisma as any).outputAsset.create({
             data: {
                 provider: result.provider,
                 kind: result.kind,
@@ -61,6 +62,7 @@ export class StorageService {
                 videoScriptId: params.videoScriptId,
                 articleId: params.articleId,
                 weeklyInquiryId: params.weeklyInquiryId,
+                textPostId: params.textPostId,
             },
         });
 

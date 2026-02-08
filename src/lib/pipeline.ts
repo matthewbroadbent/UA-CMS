@@ -32,160 +32,103 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
 
     if (!inquiry) throw new Error("Inquiry not found");
 
-    // 1. Fetch Stage 1 Prompt
-    const stage1Template = await getActivePrompt('SUBSTACK_STAGE_1', PROMPTS.SUBSTACK_STAGE_1);
+    // 0. Research Stage (Gemini)
+    console.log(`[Stage 0] Running Research (Gemini) for Inquiry: ${inquiryId}`);
+    const researchBrief = await runResearchStage(inquiry);
 
-    const stage1Prompt = buildPrompt(stage1Template, {
-        theme: inquiry.theme,
-        thinking: inquiry.thinking || "",
-        reality: inquiry.reality || "",
-        rant: inquiry.rant || "",
-        nuclear: inquiry.nuclear || "",
-        anythingElse: inquiry.anythingElse || ""
-    });
+    // 1. Synthesis & Writing (Claude)
+    console.log(`[Stage 1] Running Synthesis & Writing (Claude) for Inquiry: ${inquiryId}`);
+    const synthesis = await runSynthesisStage(inquiry, researchBrief, config);
 
-    // 2. Run Stage 1 (Enforce JSON)
-    let spineText = "";
-    let retryCount = 0;
-    const maxRetries = 1;
-
-    console.log(`Running Stage 1 Pipeline (Inquiry: ${inquiryId})`);
-
-    while (retryCount <= maxRetries) {
-        try {
-            const result = await generateContent(
-                config.stage1Provider,
-                config.stage1Model,
-                retryCount === 0 ? stage1Prompt : `${stage1Prompt}\n\nREPAIR: Your previous output was invalid JSON. Return ONLY valid JSON now according to the schema.`,
-                {
-                    temperature: config.options?.temperature1 || 0.2,
-                    maxTokens: config.options?.maxTokens1 || 2000,
-                    responseMimeType: 'application/json'
-                }
-            );
-            spineText = result.text;
-
-            // Validate JSON
-            const cleaned = spineText.replace(/```json\n?|\n?```/g, '').trim();
-            JSON.parse(cleaned);
-            break;
-        } catch (e) {
-            console.warn(`Stage 1 attempt ${retryCount + 1} failed:`, e);
-            retryCount++;
-            if (retryCount > maxRetries) {
-                // Log failure to DB
-                await (prisma as any).generationRun.create({
-                    data: {
-                        weeklyInquiryId: inquiryId,
-                        mode: config.mode,
-                        stage1Model: config.stage1Model,
-                        stage1Provider: config.stage1Provider,
-                        stage1Prompt: stage1Prompt,
-                        stage1Output: spineText,
-                        status: 'FAILED',
-                        error: `Failed to generate valid Spine JSON: ${(e as Error).message}`
-                    }
-                });
-                throw new Error("Failed to generate valid Spine JSON after retries.");
-            }
-        }
-    }
-
-    const spineJson = spineText.replace(/```json\n?|\n?```/g, '').trim();
-
-    // Create Generation Run Record
+    // 2. Create Generation Run Record
     const run = await (prisma as any).generationRun.create({
         data: {
             weeklyInquiryId: inquiryId,
             mode: config.mode,
-            stage1Model: config.stage1Model,
-            stage1Provider: config.stage1Provider,
-            stage1Prompt: stage1Prompt,
-            stage1Output: spineJson,
+            stage1Model: config.stage2Models[0]?.model || 'claude-3-5-sonnet-latest',
+            stage1Provider: 'ANTHROPIC',
+            stage1Prompt: 'CLAUDE_EDITORIAL_SYNTHESIS',
+            stage1Output: JSON.stringify(synthesis.article_spine),
             status: 'PROCESSING'
         }
     });
 
-    // 3. Stage 2: Prose
-    const outputs = [];
-    const stage2Template = await getActivePrompt('SUBSTACK_STAGE_2', PROMPTS.SUBSTACK_STAGE_2);
+    // 3. Persist Text Posts
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const textPosts = [];
 
-    console.log(`Running Stage 2 Pipeline with ${config.stage2Models.length} models`);
+    for (const [idx, post] of synthesis.text_posts.entries()) {
+        const sequence = (idx + 1).toString().padStart(2, '0');
+        const uaId = `UA-POST-${today}-${sequence}`;
 
-    for (const modelConfig of config.stage2Models) {
-        const stage2Prompt = buildPrompt(stage2Template, {
-            article_spine_json: spineJson,
-            thinking: inquiry.thinking || "",
-            reality: inquiry.reality || "",
-            rant: inquiry.rant || "",
-            nuclear: inquiry.nuclear || "",
-            anythingElse: inquiry.anythingElse || ""
-        });
-
-        let proseText = "";
-        let s2Retry = 0;
-
-        while (s2Retry <= maxRetries) {
-            const result = await generateContent(
-                modelConfig.provider,
-                modelConfig.model,
-                s2Retry === 0 ? stage2Prompt : `${stage2Prompt}\n\nREPAIR: Remove all meta-commentary like "Here is the article". Output ONLY the article markdown starting with the H1.`,
-                {
-                    temperature: config.options?.temperature2 || 0.7,
-                    maxTokens: config.options?.maxTokens2 || 4000
-                }
-            );
-            proseText = result.text;
-
-            // Simple check for forbidden patterns
-            const forbidden = ["here is", "the subject of this", "i have generated"];
-            const isClean = !forbidden.some(f => proseText.toLowerCase().includes(f));
-
-            if (isClean) break;
-            s2Retry++;
-        }
-
-        const output = await (prisma as any).generationOutput.create({
+        const saved = await (prisma as any).textPost.create({
             data: {
-                runId: run.id,
-                model: modelConfig.model,
-                provider: modelConfig.provider,
-                prompt: stage2Prompt,
-                content: proseText,
-                tokensUsed: 0 // Placeholder
-            }
-        });
-        outputs.push(output);
-    }
-
-    if (outputs.length > 0) {
-        await (prisma as any).article.upsert({
-            where: { weeklyInquiryId: inquiryId },
-            create: {
+                uaId,
                 weeklyInquiryId: inquiryId,
-                draftContent: outputs[0].content,
-                status: 'EDITORIAL'
-            },
-            update: {
-                draftContent: outputs[0].content,
+                runId: run.id,
+                index: post.index,
+                title: post.title,
+                content: post.content,
+                researchContext: JSON.stringify(researchBrief),
                 status: 'EDITORIAL'
             }
         });
 
-        // Upload Article to Storage (Supabase or Drive)
+        // Upload to Supabase ua-text bucket
         try {
-            const asset = await StorageService.uploadAndRecord({
-                file: outputs[0].content,
-                fileName: `${inquiry.uaId}_article.md`,
+            await StorageService.uploadAndRecord({
+                file: post.content,
+                fileName: `${uaId}.md`,
                 kind: 'TEXT',
-                renderId: inquiry.uaId,
-                articleId: (await prisma.article.findUnique({ where: { weeklyInquiryId: inquiryId } }))?.id,
+                renderId: uaId,
+                textPostId: saved.id,
                 weeklyInquiryId: inquiryId
             });
-            console.log(`[Storage] Article uploaded via ${asset.provider}: ${asset.fileName}`);
         } catch (err) {
-            console.error(`[Storage] Article upload failed:`, err);
+            console.error(`[Storage] Text post upload failed for ${uaId}:`, err);
         }
+        textPosts.push(saved);
+    }
+
+    // 4. Persist Article
+    await (prisma as any).article.upsert({
+        where: { weeklyInquiryId: inquiryId },
+        create: {
+            weeklyInquiryId: inquiryId,
+            draftContent: synthesis.article_prose,
+            status: 'EDITORIAL'
+        },
+        update: {
+            draftContent: synthesis.article_prose,
+            status: 'EDITORIAL'
+        }
+    });
+
+    // Create Generation Output for Substack
+    const output = await (prisma as any).generationOutput.create({
+        data: {
+            runId: run.id,
+            model: config.stage2Models[0]?.model || 'claude-3-5-sonnet-latest',
+            provider: 'ANTHROPIC',
+            prompt: 'CLAUDE_EDITORIAL_SYNTHESIS',
+            content: synthesis.article_prose,
+            tokensUsed: 0
+        }
+    });
+
+    // Upload Article to Storage
+    try {
+        const asset = await StorageService.uploadAndRecord({
+            file: synthesis.article_prose,
+            fileName: `${inquiry.uaId}_article.md`,
+            kind: 'TEXT',
+            renderId: inquiry.uaId,
+            articleId: (await prisma.article.findUnique({ where: { weeklyInquiryId: inquiryId } }))?.id,
+            weeklyInquiryId: inquiryId
+        });
+        console.log(`[Storage] Article uploaded via ${asset.provider}: ${asset.fileName}`);
+    } catch (err) {
+        console.error(`[Storage] Article upload failed:`, err);
     }
 
     await (prisma as any).generationRun.update({
@@ -193,8 +136,51 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
         data: { status: 'SUCCESS' }
     });
 
-    return { runId: run.id, outputs };
+    return { runId: run.id, outputs: [output], textPosts };
 }
+
+async function runSynthesisStage(inquiry: any, researchBrief: any, config: PipelineConfig) {
+    const template = await getActivePrompt('CLAUDE_EDITORIAL_SYNTHESIS', PROMPTS.CLAUDE_EDITORIAL_SYNTHESIS);
+    const prompt = buildPrompt(template, {
+        theme: inquiry.theme,
+        thinking: inquiry.thinking || "",
+        research_brief: JSON.stringify(researchBrief)
+    });
+
+    const modelConfig = config.stage2Models[0] || { model: 'claude-3-5-sonnet-20241022', provider: 'ANTHROPIC' };
+
+    const result = await generateContent(
+        modelConfig.provider,
+        modelConfig.model,
+        prompt,
+        {
+            temperature: config.options?.temperature2 || 0.7,
+            maxTokens: 4000,
+            responseMimeType: 'application/json'
+        }
+    );
+
+    const cleaned = result.text.replace(/```json\n?|\n?```/g, '').trim();
+    return JSON.parse(cleaned);
+}
+
+async function runResearchStage(inquiry: any) {
+    const template = await getActivePrompt('RESEARCH_BRIEF', PROMPTS.RESEARCH_BRIEF as string);
+    const prompt = buildPrompt(template, {
+        theme: inquiry.theme,
+        thinking: inquiry.thinking || "",
+        reality: inquiry.reality || ""
+    });
+
+    const result = await generateContent('GEMINI', 'gemini-2.0-flash', prompt, {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+        useSearch: true
+    });
+
+    return JSON.parse(result.text.replace(/```json\n?|\n?```/g, '').trim());
+}
+
 
 const countWords = (text: string) => text.trim().split(/\s+/).length;
 
@@ -369,7 +355,7 @@ export async function runRenderPipeline(scriptId: string, aspectRatio?: string) 
 
         // Update script with aspect ratio if provided
         if (aspectRatio) {
-            await prisma.videoScript.update({
+            await (prisma.videoScript as any).update({
                 where: { id: scriptId },
                 data: { aspectRatio }
             });
