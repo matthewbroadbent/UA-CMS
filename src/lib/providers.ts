@@ -101,8 +101,8 @@ async function generateAnthropic(modelName: string, prompt: string, options: Gen
     });
 
     const text = response.content
-        .filter(block => block.type === 'text')
-        .map(block => (block as any).text)
+        .filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text)
         .join('\n');
 
     return {
