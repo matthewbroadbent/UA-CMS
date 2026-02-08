@@ -54,12 +54,11 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
     });
 
     // 3. Persist Text Posts
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
     const textPosts = [];
 
     for (const [idx, post] of synthesis.text_posts.entries()) {
         const sequence = (idx + 1).toString().padStart(2, '0');
-        const uaId = `UA-POST-${today}-${sequence}`;
+        const uaId = `UA-POST-${inquiry.uaId}-${sequence}`;
 
         const saved = await (prisma as any).textPost.create({
             data: {
