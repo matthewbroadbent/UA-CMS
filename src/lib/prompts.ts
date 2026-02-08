@@ -201,17 +201,25 @@ Thinking: {{thinking}}
 Reality: {{reality}}
 
 ════════════════════════════════
-OUTPUT REQUIREMENT (STRUCTURED SIGNAL)
 ════════════════════════════════
-Return a JSON object containing structured Research Signal.
-Schema:
-{
-  "theme_context": "string",
-  "market_developments": ["string", "..."],
-  "specific_cases": ["string", "..."],
-  "implications": ["string", "..."],
-  "tensions_identified": ["string", "..."]
-}
+OUTPUT REQUIREMENT (RESEARCH SIGNAL)
+════════════════════════════════
+Provide a high-density Research Signal document in Markdown.
+You MUST use your search capability to find recent, relevant developments.
+
+Structure:
+# Research Context: {{theme}}
+## Recent Market Developments
+(List at least 3 recent developments affecting UK SME valuations or exit strategy)
+
+## Specific Cases & Examples
+(Detail 2-3 specific real-world examples or data points)
+
+## Strategic Implications
+(Explain how this impacts founder thinking on business systems and scale)
+
+## Tensions Identified
+(Highlight the gap between founder 'busy-ness' and actual enterprise value)
 `,
 
   // Stage 1: Synthesis & Writing (Claude)

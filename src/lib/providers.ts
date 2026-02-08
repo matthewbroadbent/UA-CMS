@@ -65,7 +65,7 @@ async function generateGemini(modelName: string, prompt: string, options: Genera
             maxOutputTokens: options.maxTokens,
             responseMimeType: options.responseMimeType === 'application/json' ? 'application/json' : 'text/plain'
         },
-        tools: options.useSearch ? [{ googleSearchRetrieval: {} }] : undefined
+        tools: options.useSearch ? [{ googleSearch: {} }] : undefined
     }, { apiVersion: "v1beta" });
 
     const result = await model.generateContent(prompt);

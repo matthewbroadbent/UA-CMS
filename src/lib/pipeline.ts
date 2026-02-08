@@ -77,7 +77,7 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
         // Upload to Supabase ua-text bucket
         try {
             await StorageService.uploadAndRecord({
-                file: post.content,
+                file: Buffer.from(post.content),
                 fileName: `${uaId}.md`,
                 kind: 'TEXT',
                 renderId: uaId,
@@ -119,7 +119,7 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
     // Upload Article to Storage
     try {
         const asset = await StorageService.uploadAndRecord({
-            file: synthesis.article_prose,
+            file: Buffer.from(synthesis.article_prose),
             fileName: `${inquiry.uaId}_article.md`,
             kind: 'TEXT',
             renderId: inquiry.uaId,
@@ -144,10 +144,10 @@ async function runSynthesisStage(inquiry: any, researchBrief: any, config: Pipel
     const prompt = buildPrompt(template, {
         theme: inquiry.theme,
         thinking: inquiry.thinking || "",
-        research_brief: JSON.stringify(researchBrief)
+        research_brief: researchBrief
     });
 
-    const modelConfig = config.stage2Models[0] || { model: 'claude-3-5-sonnet-20241022', provider: 'ANTHROPIC' };
+    const modelConfig = config.stage2Models[0] || { model: 'claude-3-5-haiku-20241022', provider: 'ANTHROPIC' };
 
     const result = await generateContent(
         modelConfig.provider,
@@ -174,11 +174,10 @@ async function runResearchStage(inquiry: any) {
 
     const result = await generateContent('GEMINI', 'gemini-2.0-flash', prompt, {
         temperature: 0.2,
-        responseMimeType: 'application/json',
         useSearch: true
     });
 
-    return JSON.parse(result.text.replace(/```json\n?|\n?```/g, '').trim());
+    return result.text.trim();
 }
 
 
