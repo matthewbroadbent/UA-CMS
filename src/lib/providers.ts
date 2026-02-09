@@ -57,6 +57,30 @@ export async function generateContent(
     }
 }
 
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, initialDelay = 2000): Promise<T> {
+    let delay = initialDelay;
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            return await fn();
+        } catch (err: any) {
+            const is429 = err.status === 429 ||
+                err.message?.includes("429") ||
+                err.message?.includes("Resource exhausted") ||
+                err.message?.includes("Too Many Requests");
+
+            if (is429 && i < maxRetries - 1) {
+                const jitter = Math.random() * 1000;
+                debugLog(`[Providers] 429/Rate Limit detected. Retrying in ${Math.round(delay + jitter)}ms... (Attempt ${i + 1}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, delay + jitter));
+                delay *= 2;
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw new Error("Max retries exceeded");
+}
+
 async function generateGemini(modelName: string, prompt: string, options: GenerationOptions): Promise<GenerationResult> {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
     const model = genAI.getGenerativeModel({
@@ -69,70 +93,202 @@ async function generateGemini(modelName: string, prompt: string, options: Genera
         tools: options.useSearch ? ([{ googleSearch: {} }] as any) : undefined
     }, { apiVersion: "v1beta" });
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return {
-        text: response.text(),
-    };
+    return await withRetry(async () => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return {
+            text: response.text(),
+        };
+    });
 }
 
 async function generateOpenAI(modelName: string, prompt: string, options: GenerationOptions): Promise<GenerationResult> {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const response = await openai.chat.completions.create({
-        model: modelName,
-        messages: [{ role: "user", content: prompt }],
-        temperature: options.temperature,
-        max_tokens: options.maxTokens,
-        response_format: options.responseMimeType === 'application/json' ? { type: "json_object" } : undefined
-    });
+    return await withRetry(async () => {
+        const response = await openai.chat.completions.create({
+            model: modelName,
+            messages: [{ role: "user", content: prompt }],
+            temperature: options.temperature,
+            max_tokens: options.maxTokens,
+            response_format: options.responseMimeType === 'application/json' ? { type: "json_object" } : undefined
+        });
 
-    return {
-        text: response.choices[0].message.content || "",
-        tokensUsed: response.usage?.total_tokens
-    };
+        return {
+            text: response.choices[0].message.content || "",
+            tokensUsed: response.usage?.total_tokens
+        };
+    });
 }
 
 async function generateAnthropic(modelName: string, prompt: string, options: GenerationOptions): Promise<GenerationResult> {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    let response;
-    try {
-        response = await anthropic.messages.create({
-            model: modelName,
-            max_tokens: options.maxTokens || 4096,
-            messages: [{ role: "user", content: prompt }],
-            temperature: options.temperature,
-        });
-    } catch (err: any) {
-        // Centralized 404 Fallback: If a specific version is not found, try a resilient alias
-        if (err.status === 404) {
-            let fallbackModel = '';
-            if (modelName === 'claude-3-5-sonnet-20241022') fallbackModel = 'claude-3-7-sonnet-20250219';
-            else if (modelName === 'claude-3-5-haiku-20241022') fallbackModel = 'claude-3-5-haiku-latest';
+    const callAt = async (mn: string, depth = 0): Promise<GenerationResult> => {
+        if (depth > 3) throw new Error("Max fallback depth exceeded for Anthropic");
 
-            if (fallbackModel) {
-                debugLog(`[Providers] ${modelName} returned 404. Retrying with fallback: ${fallbackModel}`);
-                response = await anthropic.messages.create({
-                    model: fallbackModel,
-                    max_tokens: options.maxTokens || 4096,
-                    messages: [{ role: "user", content: prompt }],
-                    temperature: options.temperature,
-                });
-            } else {
-                throw err;
+        try {
+            const response = await anthropic.messages.create({
+                model: mn,
+                max_tokens: options.maxTokens || 4096,
+                messages: [{ role: "user", content: prompt }],
+                temperature: options.temperature,
+            });
+
+            const text = response.content
+                .filter((block: any) => block.type === 'text')
+                .map((block: any) => block.text)
+                .join('\n');
+
+            return {
+                text,
+                tokensUsed: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0)
+            };
+        } catch (err: any) {
+            // Centralized 404/529 Overloaded Fallback
+            if (err.status === 404 || err.status === 529 || err.status === 400) {
+                let fallbackModel = '';
+                if (mn.includes('sonnet')) {
+                    // Refined Sonnet Chain
+                    if (mn === 'claude-3-5-sonnet-20241022') fallbackModel = 'claude-3-5-sonnet-latest';
+                    else if (mn === 'claude-3-5-sonnet-latest') fallbackModel = 'claude-3-5-sonnet-20240620';
+                    else if (mn === 'claude-3-5-sonnet-20240620') fallbackModel = 'claude-3-opus-20240229';
+                } else if (mn.includes('haiku')) {
+                    fallbackModel = 'claude-3-5-haiku-latest';
+                }
+
+                if (fallbackModel && fallbackModel !== mn) {
+                    debugLog(`[Providers] ${mn} failed with ${err.status}. Attempting depth ${depth + 1} fallback: ${fallbackModel}`);
+                    return await callAt(fallbackModel, depth + 1);
+                }
+
+                // Tier-3: Panic Fallback to Gemini if Anthropic is completely unreachable/denied
+                debugLog(`[Providers] Anthropic stack exhausted after ${depth} retries. Panic falling back to GEMINI...`);
+                return await generateGemini('gemini-2.0-flash', prompt, options);
             }
-        } else {
             throw err;
         }
-    }
-
-    const text = response.content
-        .filter((block: any) => block.type === 'text')
-        .map((block: any) => block.text)
-        .join('\n');
-
-    return {
-        text,
-        tokensUsed: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0)
     };
+
+    return await withRetry(async () => {
+        return await callAt(modelName);
+    });
+}
+
+export function extractJSON(text: string): any {
+    if (!text) throw new Error("Empty response received from LLM.");
+
+    // Aggressively strip ALL markdown code blocks
+    let cleaned = text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
+
+    const tryParse = (str: string) => {
+        try {
+            return JSON.parse(str);
+        } catch (e: any) {
+            // If it fails due to control characters or line breaks, sanitize manually
+            // We broaden the check to any error that might be fixed by escaping
+            const msg = e.message.toLowerCase();
+            if (msg.includes("control character") || msg.includes("line break") || msg.includes("unexpected token") || msg.includes("position")) {
+                let sanitized = "";
+                let inString = false;
+                let escaped = false;
+
+                for (let i = 0; i < str.length; i++) {
+                    const char = str[i];
+                    const code = str.charCodeAt(i);
+
+                    if (char === '"' && !escaped) {
+                        inString = !inString;
+                        sanitized += char;
+                    } else if (inString) {
+                        // Inside string: ALL control characters (0x00-0x1F) MUST be escaped
+                        if (code < 32) {
+                            switch (char) {
+                                case '\n': sanitized += '\\n'; break;
+                                case '\r': sanitized += '\\r'; break;
+                                case '\t': sanitized += '\\t'; break;
+                                case '\b': sanitized += '\\b'; break;
+                                case '\f': sanitized += '\\f'; break;
+                                default:
+                                    const hex = code.toString(16).padStart(4, '0');
+                                    sanitized += `\\u${hex}`;
+                            }
+                        } else if (char === '\\' && !escaped) {
+                            // Check if this is a valid escape sequence next character
+                            const nextChar = str[i + 1];
+                            const validEscapes = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'];
+                            if (!validEscapes.includes(nextChar)) {
+                                // Invalid escape backslash, escape the backslash itself
+                                sanitized += '\\\\';
+                            } else {
+                                sanitized += char;
+                            }
+                        } else {
+                            sanitized += char;
+                        }
+                    } else {
+                        sanitized += char;
+                    }
+
+                    // Track escape state
+                    if (char === '\\' && !escaped) {
+                        escaped = true;
+                    } else {
+                        escaped = false;
+                    }
+                }
+
+                try {
+                    return JSON.parse(sanitized);
+                } catch (innerE: any) {
+                    console.error(`[tryParse] Manual sanitization failed: ${innerE.message}`);
+                    throw e; // Throw original if sanitization still fails
+                }
+            }
+            throw e;
+        }
+    };
+
+    try {
+        return tryParse(cleaned);
+    } catch (e: any) {
+        console.error(`[extractJSON Fail] First pass fail. Snippet: ${text.substring(0, 100)}...`);
+        console.error(`[extractJSON Fail] Attempting resilient recovery.`);
+
+        // --- RESILIENT RECOVERY ---
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            let jsonPart = text.substring(firstBrace, lastBrace + 1);
+            jsonPart = jsonPart.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '');
+
+            let braceCount = 0;
+            let bracketCount = 0;
+            let inString = false;
+            let escaped = false;
+
+            for (let i = 0; i < jsonPart.length; i++) {
+                const char = jsonPart[i];
+                if (char === '"' && !escaped) inString = !inString;
+                if (!inString) {
+                    if (char === '{') braceCount++;
+                    if (char === '}') braceCount--;
+                    if (char === '[') bracketCount++;
+                    if (char === ']') bracketCount--;
+                }
+                escaped = char === '\\' && !escaped;
+            }
+
+            if (inString) jsonPart += '"';
+            while (bracketCount > 0) { jsonPart += ']'; bracketCount--; }
+            while (braceCount > 0) { jsonPart += '}'; braceCount--; }
+
+            try {
+                return tryParse(jsonPart);
+            } catch (innerE: any) {
+                console.error(`[extractJSON Fail] Resilient recovery failed: ${innerE.message}`);
+            }
+        }
+        throw e;
+    }
 }

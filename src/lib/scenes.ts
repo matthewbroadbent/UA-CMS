@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { extractJSON, generateContent, LLMProvider } from "./providers";
 import { prisma } from "./prisma";
 import fs from "fs";
 import path from "path";
@@ -7,7 +7,7 @@ import { fal } from "@fal-ai/client";
 import { StorageService } from "./storage";
 import { getIntelligibleName } from "./naming";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+// GoogleGenerativeAI is now handled by the centralized providers.ts
 
 async function downloadToBuffer(url: string): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -30,11 +30,6 @@ export async function planScenes(scriptId: string, targetDuration?: number) {
     });
 
     if (!script) throw new Error("Script not found");
-
-    const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: { responseMimeType: "application/json" }
-    });
 
     const durationToFill = targetDuration || (parseInt(script.durationType) || 30);
 
@@ -75,8 +70,8 @@ RETURN JSON:
 }
 `;
 
-    const result = await model.generateContent(prompt);
-    const data = JSON.parse(result.response.text());
+    const result = await generateContent('GEMINI', 'gemini-1.5-flash', prompt, { responseMimeType: 'application/json' });
+    const data = extractJSON(result.text);
 
     // Save scenes to DB
     await prisma.scene.deleteMany({ where: { videoScriptId: scriptId } });

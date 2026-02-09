@@ -255,6 +255,11 @@ DO NOT wrap the JSON in markdown code blocks (\`\`\`json).
 DO NOT include any text, preamble, or postamble outside the JSON braces.
 You MUST use your search capability to find recent, relevant developments.
 
+VERITY MANDATE:
+- You must match article titles EXACTLY as they appear in the search result metadata.
+- If a source does not have a clear title or publisher, discard it.
+- NO HALLUCINATIONS: Do not guess or "clean up" titles for narrative elegance.
+
 Required Schema:
 {
   "facts": ["string (concrete, numeric where possible) linked to [SRC-ID]"],
@@ -268,7 +273,7 @@ Required Schema:
       "publisher": "...",
       "url": "https://...",
       "date_published": "YYYY-MM-DD (if available)",
-      "summary": "1–2 sentences OR excerpt (max 25 words)"
+      "grounding_excerpt": "DIRECT QUOTE (max 50 words) from the page that verifies the claim"
     }
   ]
 }
@@ -368,8 +373,10 @@ MANDATORY VOICE & CONSTRAINTS
 ════════════════════════════════
 MANDATORY STRUCTURE (HEADER BLOCK)
 ════════════════════════════════
-# The Unemployable Advisor
+**THE UNEMPLOYABLE ADVISOR**
 *For founders who want options before they need them*
+
+---
 
 # Chapter {{chapter_number}}: {{chapter_title}}
 * {{ theme_subtitle }} *

@@ -56,15 +56,21 @@ export class SupabaseStorageProvider implements StorageProvider {
     }
 
     async getSignedUrl(bucket: string, objectKey: string, ttlSeconds: number = 86400): Promise<string> {
-        const { data, error } = await this.client.storage
-            .from(bucket)
-            .createSignedUrl(objectKey, ttlSeconds);
+        try {
+            const { data, error } = await this.client.storage
+                .from(bucket)
+                .createSignedUrl(objectKey, ttlSeconds);
 
-        if (error) {
-            throw new Error(`Failed to generate signed URL: ${error.message}`);
+            if (error) {
+                console.warn(`[Supabase] Failed to generate signed URL for ${bucket}/${objectKey}: ${error.message}`);
+                return '';
+            }
+
+            return data.signedUrl;
+        } catch (err: any) {
+            console.error(`[Supabase Error] getSignedUrl exception for ${bucket}/${objectKey}:`, err.message);
+            return '';
         }
-
-        return data.signedUrl;
     }
 
     getPublicUrl(bucket: string, objectKey: string): string {

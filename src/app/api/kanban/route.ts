@@ -44,42 +44,53 @@ export async function GET() {
         });
 
         // Enrich with signed URLs for Supabase assets
-        const enrichedItems = await Promise.all(items.map(async (item: any) => {
+        // We do this sequentially to avoid "Bad Gateway" (502) errors from Supabase
+        // when making too many concurrent Storage requests.
+        for (const item of items) {
             const enrichAssets = async (assets: any[]) => {
                 if (!assets) return [];
-                return Promise.all(assets.map(async (asset) => ({
-                    ...asset,
-                    signedUrl: asset.provider === 'supabase' ? await StorageService.getSignedUrl(asset) : asset.driveWebViewLink
-                })));
+                const enriched = [];
+                for (const asset of assets) {
+                    enriched.push({
+                        ...asset,
+                        signedUrl: asset.provider === 'supabase'
+                            ? await StorageService.getSignedUrl(asset)
+                            : asset.driveWebViewLink
+                    });
+                }
+                return enriched;
             };
 
             item.assets = await enrichAssets(item.assets);
             if (item.article) {
                 item.article.assets = await enrichAssets(item.article.assets);
             }
-            item.scripts = await Promise.all(item.scripts.map(async (script: any) => ({
-                ...script,
-                assets: await enrichAssets(script.assets),
-                scenes: script.scenes ? await Promise.all(script.scenes.map(async (scene: any) => ({
-                    ...scene,
-                    assetUrl: (scene.assetUrl && !scene.assetUrl.startsWith('http'))
-                        ? await StorageService.getSignedUrl({
-                            provider: 'supabase',
-                            bucket: (scene.type === 'VIDEO') ? (process.env.UA_SUPABASE_VIDEO_BUCKET || 'ua-video') : (process.env.UA_SUPABASE_VIDEO_BUCKET || 'ua-video'),
-                            objectKey: scene.assetUrl
-                        })
-                        : scene.assetUrl
-                }))) : []
-            })));
-            item.textPosts = await Promise.all(item.textPosts.map(async (post: any) => ({
-                ...post,
-                assets: await enrichAssets(post.assets)
-            })));
 
-            return item;
-        }));
+            if (item.scripts) {
+                for (const script of item.scripts) {
+                    script.assets = await enrichAssets(script.assets);
+                    if (script.scenes) {
+                        for (const scene of script.scenes) {
+                            scene.assetUrl = (scene.assetUrl && !scene.assetUrl.startsWith('http'))
+                                ? await StorageService.getSignedUrl({
+                                    provider: 'supabase',
+                                    bucket: (scene.type === 'VIDEO') ? (process.env.UA_SUPABASE_VIDEO_BUCKET || 'ua-video') : (process.env.UA_SUPABASE_VIDEO_BUCKET || 'ua-video'),
+                                    objectKey: scene.assetUrl
+                                })
+                                : scene.assetUrl;
+                        }
+                    }
+                }
+            }
 
-        return NextResponse.json(enrichedItems);
+            if (item.textPosts) {
+                for (const post of item.textPosts) {
+                    post.assets = await enrichAssets(post.assets);
+                }
+            }
+        }
+
+        return NextResponse.json(items);
     } catch (error: any) {
         console.error('API Error /api/kanban:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

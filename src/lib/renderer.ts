@@ -129,10 +129,10 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
     const audioPath = path.join(audioDir, script.audioUrl);
     const timestamp = Date.now();
     const outputPath = path.join(mediaBaseDir, 'videos', `${outputName || scriptId}_${aspectRatio.replace(':', 'x')}_${timestamp}.mp4`);
-    const relativeTempDir = path.join('tmp', scriptId);
+    const tempDir = path.resolve(process.cwd(), 'tmp', scriptId);
 
-    if (!fs.existsSync(relativeTempDir)) fs.mkdirSync(relativeTempDir, { recursive: true });
-    const assetsDir = path.join(relativeTempDir, 'assets');
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+    const assetsDir = path.join(tempDir, 'assets');
     if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
 
     const outputDir = path.dirname(outputPath);
@@ -175,7 +175,7 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
 
     try {
         // 1. Generate Subtitles (ASS format for brand hierarchy)
-        const assPath = await generateASS(script, relativeTempDir, width, height);
+        const assPath = await generateASS(script, tempDir, width, height);
 
         // 3. Render each scene individually to MP4
         const sceneFiles: string[] = [];
@@ -183,7 +183,7 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
             const scene = localizedScenes[i];
             if (!scene.assetUrl) continue;
 
-            const sceneOutputPath = path.join(relativeTempDir, `scene_${i}_rendered.mp4`);
+            const sceneOutputPath = path.join(tempDir, `scene_${i}_rendered.mp4`);
             log(`Rendering Scene ${i + 1}/${localizedScenes.length}...`);
 
             const duration = scene.duration || 6;
@@ -218,7 +218,7 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
         log(`Concatenating ${sceneFiles.length} scenes and applying master overlays...`);
 
         // 4. Concat all visual streams and add audio/logo/subtitles
-        const concatListPath = path.join(relativeTempDir, 'concat_list.txt');
+        const concatListPath = path.join(tempDir, 'concat_list.txt');
         const concatContent = sceneFiles.map(f => `file '${path.resolve(f).replace(/'/g, "'\\''")}'`).join('\n');
         fs.writeFileSync(concatListPath, concatContent);
 

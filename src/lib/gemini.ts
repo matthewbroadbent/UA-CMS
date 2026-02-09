@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { PROMPTS, buildPrompt } from "./prompts";
-import { generateContent } from "./providers";
+import { generateContent, extractJSON } from "./providers";
 
 export async function generateScripts(articleMarkdown: string) {
     // Try to get custom active prompt from DB
@@ -24,6 +24,5 @@ export async function generateScripts(articleMarkdown: string) {
         responseMimeType: 'application/json'
     });
 
-    const text = result.text.replace(/```json\n?|\n?```/g, '').trim();
-    return JSON.parse(text).scripts;
+    return extractJSON(result.text).scripts;
 }

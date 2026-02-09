@@ -44,57 +44,78 @@ export async function POST(req: Request) {
 
         // Handle Stage-Specific Logic (Automatic actions on manual move)
         if (status === 'EDITORIAL') {
-            debugLog(`[EDITORIAL] Starting Pipeline for: ${id}`);
+            // ONLY trigger the full generation pipeline if coming from PENDING
+            // If coming from a later stage (VOICE, etc.), it's a manual refinement move
+            if (item.status === 'PENDING' || item.status === 'FAILED') {
+                debugLog(`[EDITORIAL] Starting Initial Pipeline for: ${id}`);
 
-            const pipelineConfig = config || {
-                mode: 'STANDARD',
-                stage1Model: 'gemini-2.0-flash',
-                stage1Provider: 'GEMINI',
-                stage2Models: [
-                    process.env.ANTHROPIC_API_KEY
-                        ? { model: 'claude-3-5-haiku-20241022', provider: 'ANTHROPIC' }
-                        : { model: 'gemini-2.0-flash', provider: 'GEMINI' }
-                ]
-            };
+                const pipelineConfig = config || {
+                    mode: 'STANDARD',
+                    stage1Model: 'gemini-2.0-flash',
+                    stage1Provider: 'GEMINI',
+                    stage2Models: [
+                        process.env.ANTHROPIC_API_KEY
+                            ? { model: 'claude-3-5-haiku-20241022', provider: 'ANTHROPIC' }
+                            : { model: 'gemini-2.0-flash', provider: 'GEMINI' }
+                    ]
+                };
 
-            try {
-                debugLog(`[EDITORIAL] Triggering runPipeline (Deterministic 3-Pass)...`);
-                const result = await runPipeline(id, pipelineConfig);
+                try {
+                    debugLog(`[EDITORIAL] Triggering runPipeline (Deterministic 3-Pass)...`);
+                    const result = await runPipeline(id, pipelineConfig);
 
-                debugLog(`[EDITORIAL] Article generated. RunID: ${result.runId}`);
+                    debugLog(`[EDITORIAL] Article generated. RunID: ${result.runId}`);
 
-                debugLog(`[EDITORIAL] Triggering Script Drafting...`);
-                const primaryContent = result.outputs[0].content;
-                const scripts = await generateScripts(primaryContent);
-                debugLog(`[EDITORIAL] ${scripts.length} scripts drafted.`);
+                    debugLog(`[EDITORIAL] Triggering Script Drafting...`);
+                    const primaryContent = result.outputs[0].content;
+                    const scripts = await generateScripts(primaryContent);
+                    debugLog(`[EDITORIAL] ${scripts.length} scripts drafted.`);
 
-                if (item.scripts.length > 0) {
-                    debugLog(`[EDITORIAL] Deleting existing scripts...`);
-                    await prisma.videoScript.deleteMany({ where: { weeklyInquiryId: id } });
+                    if (item.scripts.length > 0) {
+                        debugLog(`[EDITORIAL] Deleting existing scripts...`);
+                        await prisma.videoScript.deleteMany({ where: { weeklyInquiryId: id } });
+                    }
+
+                    debugLog(`[EDITORIAL] Syncing new scripts...`);
+                    await prisma.$transaction(
+                        scripts.map((s: any) => prisma.videoScript.create({
+                            data: {
+                                weeklyInquiryId: id,
+                                durationType: s.duration,
+                                hook: s.hook,
+                                script: s.script,
+                                closingLine: s.closingLine,
+                            }
+                        }))
+                    );
+                    debugLog(`[EDITORIAL] Database sync complete.`);
+                } catch (pipelineErr: any) {
+                    debugLog(`[EDITORIAL] PIPELINE FAILURE: ${pipelineErr.message}`);
+                    console.error(`[STAGE_MOVE] [EDITORIAL] PIPELINE FAILURE:`, pipelineErr);
+                    throw new Error(`Editorial Pipeline Failed: ${pipelineErr.message}`);
                 }
-
-                debugLog(`[EDITORIAL] Syncing new scripts...`);
-                await prisma.$transaction(
-                    scripts.map((s: any) => prisma.videoScript.create({
-                        data: {
-                            weeklyInquiryId: id,
-                            durationType: s.duration,
-                            hook: s.hook,
-                            script: s.script,
-                            closingLine: s.closingLine,
-                        }
-                    }))
-                );
-                debugLog(`[EDITORIAL] Database sync complete.`);
-            } catch (pipelineErr: any) {
-                debugLog(`[EDITORIAL] PIPELINE FAILURE: ${pipelineErr.message}`);
-                console.error(`[STAGE_MOVE] [EDITORIAL] PIPELINE FAILURE:`, pipelineErr);
-                throw new Error(`Editorial Pipeline Failed: ${pipelineErr.message}`);
             }
         }
 
         if (status === 'VOICE') {
             debugLog(`[VOICE] Starting Voice Pipeline for: ${id}`);
+
+            // SECURITY GATE: Prevent moving to VOICE if there are SYSTEM-BLOCK issues
+            if (item.article?.validationReport && item.article.validationReport.trim() !== '') {
+                try {
+                    const report = JSON.parse(item.article.validationReport);
+                    if (report && report.status === 'SYSTEM-BLOCK') {
+                        debugLog(`[VOICE] BLOCKED: Article has SYSTEM-BLOCK validation errors.`);
+                        return NextResponse.json({
+                            error: 'Publication blocked: Article has critical validation errors that must be resolved in the Editorial Desk.',
+                            report
+                        }, { status: 403 });
+                    }
+                } catch (e) {
+                    debugLog(`[VOICE] Warning: Malformed validation report for ${id}. Skipping gate.`);
+                }
+            }
+
             try {
                 await runVoicePipeline(id, { autoApprove: true });
                 debugLog(`[VOICE] Voice Pipeline complete.`);
@@ -110,7 +131,7 @@ export async function POST(req: Request) {
             try {
                 // Support targeted script selection (e.g., only 30s)
                 const selectedScripts = config?.selectedScriptIds || null;
-                await runMediaPipeline(id, selectedScripts);
+                await runMediaPipeline(id, selectedScripts, { autoApprove: true });
                 debugLog(`[MEDIA] Media Pipeline complete.`);
             } catch (mediaErr: any) {
                 debugLog(`[MEDIA] MEDIA PIPELINE FAILURE: ${mediaErr.message}`);

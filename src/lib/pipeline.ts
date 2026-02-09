@@ -8,9 +8,11 @@ import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
 import { generateMediaAsset } from './scenes';
 import { renderVideo } from './renderer';
-import { LLMProvider, generateContent } from './providers';
+import { LLMProvider, generateContent, extractJSON } from './providers';
 import { StorageService } from "./storage";
 import { getIntelligibleName } from "./naming";
+import { validateArticle } from './validator';
+import { applyEditorialSanitization } from './editorial';
 
 export function debugLog(msg: string) {
     const time = new Date().toISOString();
@@ -18,6 +20,34 @@ export function debugLog(msg: string) {
         fs.appendFileSync('debug.log', `[${time}] ${msg}\n`);
     } catch (e) {
         console.error("Failed to write to debug.log", e);
+    }
+}
+
+/**
+ * Word count utility
+ */
+function countWords(text: string) {
+    return text.trim().split(/\s+/).length;
+}
+
+/**
+ * Verifies if a URL is reachable (returns 200 OK)
+ */
+async function verifyUrl(url: string, timeoutMs = 3000): Promise<{ ok: boolean; status?: number; error?: string }> {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        const res = await fetch(url, {
+            method: 'HEAD',
+            signal: controller.signal,
+            headers: { 'User-Agent': 'UA-Editorial-Validator/1.0' }
+        });
+
+        clearTimeout(timeout);
+        return { ok: res.ok, status: res.status };
+    } catch (e: any) {
+        return { ok: false, error: e.message };
     }
 }
 
@@ -38,275 +68,12 @@ export interface PipelineConfig {
  * Robustly extracts and parses JSON from a string that might contain preamble, 
  * search tool output, or markdown citations.
  */
-function extractJSON(text: string): any {
-    if (!text) throw new Error("Empty response received from LLM.");
 
-    // Aggressively strip ALL markdown code blocks
-    let cleaned = text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
-
-    const tryParse = (str: string) => {
-        try {
-            return JSON.parse(str);
-        } catch (e: any) {
-            // If it fails due to control characters or line breaks, sanitize manually
-            if (e.message.includes("control character") || e.message.includes("line breaks") || e.message.includes("Unexpected token")) {
-                let sanitized = "";
-                let inString = false;
-                let escaped = false;
-
-                for (let i = 0; i < str.length; i++) {
-                    const char = str[i];
-                    const code = str.charCodeAt(i);
-
-                    if (char === '"' && !escaped) {
-                        inString = !inString;
-                        sanitized += char;
-                    } else if (inString) {
-                        // Inside string: ALL control characters (0x00-0x1F) MUST be escaped
-                        if (code < 32) {
-                            switch (char) {
-                                case '\n': sanitized += '\\n'; break;
-                                case '\r': sanitized += '\\r'; break;
-                                case '\t': sanitized += '\\t'; break;
-                                case '\b': sanitized += '\\b'; break;
-                                case '\f': sanitized += '\\f'; break;
-                                default:
-                                    const hex = code.toString(16).padStart(4, '0');
-                                    sanitized += `\\u${hex}`;
-                            }
-                        } else {
-                            sanitized += char;
-                        }
-                    } else {
-                        // Outside string: Only allow valid whitespace, escape other control characters
-                        if (code < 32 && ![9, 10, 13].includes(code)) {
-                            const hex = code.toString(16).padStart(4, '0');
-                            sanitized += `\\u${hex}`;
-                        } else {
-                            sanitized += char;
-                        }
-                    }
-
-                    // Track escape state
-                    if (char === '\\' && !escaped) {
-                        escaped = true;
-                    } else {
-                        escaped = false;
-                    }
-                }
-
-                try {
-                    return JSON.parse(sanitized);
-                } catch (innerE) {
-                    throw e; // Throw original if sanitization still fails
-                }
-            }
-            throw e;
-        }
-    };
-
-    try {
-        return tryParse(cleaned);
-    } catch (e: any) {
-        debugLog(`[extractJSON Fail] Failed first pass with cleaned text. Attempting resilient recovery.`);
-
-        // --- RESILIENT RECOVERY ---
-        // 1. Greedy brace extraction - we look for the OUTERMOST braces
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            let jsonPart = text.substring(firstBrace, lastBrace + 1);
-
-            // Clean any markdown blocks that might have been captured inside the range
-            jsonPart = jsonPart.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '');
-
-            // 2. Truncated JSON recovery: count braces and brackets and close them
-            let braceCount = 0;
-            let bracketCount = 0;
-            let inString = false;
-            let escaped = false;
-
-            for (let i = 0; i < jsonPart.length; i++) {
-                const char = jsonPart[i];
-                if (char === '"' && !escaped) inString = !inString;
-                if (!inString) {
-                    if (char === '{') braceCount++;
-                    if (char === '}') braceCount--;
-                    if (char === '[') bracketCount++;
-                    if (char === ']') bracketCount--;
-                }
-                escaped = char === '\\' && !escaped;
-            }
-
-            // Close strings
-            if (inString) jsonPart += '"';
-            // Close brackets
-            while (bracketCount > 0) { jsonPart += ']'; bracketCount--; }
-            // Close braces
-            while (braceCount > 0) { jsonPart += '}'; braceCount--; }
-
-            try {
-                return tryParse(jsonPart);
-            } catch (innerE: any) {
-                debugLog(`[extractJSON Fail] Resilient recovery failed: ${innerE.message}`);
-            }
-        }
-    }
-    throw new Error("Could not extract valid JSON from response.");
-}
 
 
 /**
- * Tier 0 — HARD FAIL (NO LLM REPAIR)
- * Encoding, Research Pack, Spine Contract, Publication Headers.
+ * extractJSON - Resilient JSON extraction
  */
-function validateTier0(text: string, contracts: { researchPack?: any, spineContract?: any }): { valid: boolean; errors: string[] } {
-    const errors: string[] = [];
-
-    // 1. Encoding corruption (mojibake)
-    const mojibake = ["Â£", "â€•", "â€¢", "â€™", "â€œ", "â€", "â", "Â"];
-    for (const char of mojibake) {
-        if (text.includes(char)) {
-            errors.push(`Encoding corruption detected: Found "${char}". No repairs allowed.`);
-        }
-    }
-
-    // 2. Missing contracts
-    if (!contracts.researchPack || Object.keys(contracts.researchPack).length === 0) {
-        errors.push("research_pack missing or empty.");
-    }
-    if (!contracts.spineContract || Object.keys(contracts.spineContract).length === 0) {
-        errors.push("spine_contract missing.");
-    }
-
-    // 3. Publication headers
-    if (!text.includes("# The Unemployable Advisor")) {
-        errors.push("Missing publication header: '# The Unemployable Advisor'");
-    }
-    if (!text.match(/\n\*[^*]+\*\n/)) { // Italic subtitle
-        errors.push("Missing publication subtitle (italic).");
-    }
-
-    // 4. Chapter header (H1)
-    if (!text.match(/^# Chapter/m)) {
-        errors.push("Missing or incorrect chapter header level: '# Chapter X: ...' (Must be H1)");
-    }
-
-    return { valid: errors.length === 0, errors };
-}
-
-/**
- * Tier 1 — HARD FAIL (RERUN PASS C ONLY)
- * Structural breach.
- */
-function validateTier1(text: string, spineContract: any): { valid: boolean; errors: string[] } {
-    const errors: string[] = [];
-
-    // Check H2 count (sections are H2 in the refined structure)
-    // We match ## at the start of the line, then filter out the "Chapter" heading
-    const allH2s = text.match(/^##\s.+/gm) || [];
-    const sectionH2s = allH2s.filter(h => !h.includes('## Chapter'));
-    const h2Count = sectionH2s.length;
-
-    if (h2Count !== 5) {
-        errors.push(`Structural breach: Found ${h2Count} sections, expected exactly 5.`);
-    }
-
-    // Check H2 title length (3-6 words)
-    sectionH2s.forEach(h => {
-        const title = h.replace('## ', '').trim();
-        const wordCount = title.split(/\s+/).length;
-        if (wordCount < 3 || wordCount > 6) {
-            errors.push(`Structural breach: Section title "${title}" is ${wordCount} words. Requirement: 3-6 words.`);
-        }
-    });
-
-    // Check titles match spine contract
-    if (spineContract && spineContract.spine) {
-        spineContract.spine.forEach((s: any, idx: number) => {
-            if (!text.includes(`## ${s.title}`)) {
-                errors.push(`Structural breach: Missing section title "${s.title}" from spine contract.`);
-            }
-        });
-    }
-
-    // Extra headings
-    const totalHeadings = (text.match(/^#+\s/gm) || []).length;
-    // Expected: 1 (H1) + 1 (Chapter H2) + 5 (Section H2s) + 1 (REFERENCES H2 maybe?) = 8
-    const refsHeading = text.includes("REFERENCES") ? 1 : 0;
-    if (totalHeadings > (7 + refsHeading)) {
-        errors.push(`Structural breach: Extra headings detected. Found ${totalHeadings}, expected max ${7 + refsHeading}.`);
-    }
-
-    return { valid: errors.length === 0, errors };
-}
-
-/**
- * Tier 2 — REPAIRABLE (MAX ONE REPAIR CALL)
- * Depth, Ending, References.
- */
-function validateTier2(text: string, researchPack: any): { valid: boolean; errors: string[], report: any } {
-    const errors: string[] = [];
-    const report: any = {
-        total_words: text.split(/\s+/).length,
-        words_per_section: {},
-        paragraphs_per_section: {},
-        headings_found: (text.match(/^##\s.+/gm) || []).filter(h => !h.includes('## Chapter'))
-    };
-
-    // 1. Depth
-    if (report.total_words < 750) {
-        errors.push(`Word count too low: ${report.total_words} (min 750).`);
-    }
-
-    const sections = text.split(/^##\s(?!Chapter)/gm).slice(1);
-    sections.forEach((s, idx) => {
-        const title = report.headings_found[idx]?.replace('## ', '') || `Section ${idx + 1}`;
-        const words = s.split(/\s+/).length;
-        const paragraphs = s.split(/\n\s*\n/).length;
-        report.words_per_section[title] = words;
-        report.paragraphs_per_section[title] = paragraphs;
-
-        if (words < 130) errors.push(`Section "${title}" too short: ${words} words (min 130).`);
-        if (paragraphs < 2) errors.push(`Section "${title}" too thin: ${paragraphs} paragraphs (min 2).`);
-    });
-
-    // 2. Ending
-    const lastLines = text.trim().split('\n').slice(-5).join('\n').toLowerCase();
-    const metaPhrases = ["Would you like", "Shall I", "Next section", "I will now", "Let me know"];
-    for (const phrase of metaPhrases) {
-        if (lastLines.includes(phrase.toLowerCase())) errors.push(`Meta-LLM language detected near end: "${phrase}"`);
-    }
-    if (lastLines.includes('click here') || lastLines.includes('subscribe')) errors.push("CTA language detected.");
-    if (text.trim().endsWith('?')) errors.push("Ends with a question (interactive ending forbidden).");
-
-    // 3. References & Citation Hygiene
-    if (!text.includes("REFERENCES")) {
-        errors.push("REFERENCES section missing.");
-    } else {
-        const refCount = (text.match(/\[SRC-\d+\]/g) || []).length;
-        if (refCount < 5) errors.push(`Insufficient references: Found ${refCount} (min 5).`);
-
-        // Check for Footnote syntax (Forbidden)
-        if (text.match(/\[\^\d+\]/)) {
-            errors.push("Forbidden citation format: Footnote syntax [^1] detected. Use [SRC-XX] only.");
-        }
-
-        // Check for Redirect/AI URLs
-        const urls = text.match(/https?:\/\/[^\s\)]+/g) || [];
-        const redirectPatterns = ["google.com/search", "vertexai", "googlecloud", "atp.ai"];
-        for (const url of urls) {
-            for (const pattern of redirectPatterns) {
-                if (url.includes(pattern)) {
-                    errors.push(`Reference hygiene failure: Non-canonical/Redirect URL detected: ${url}`);
-                }
-            }
-        }
-    }
-
-    return { valid: errors.length === 0, errors, report };
-}
 
 export async function resetInquiryToStartingState(inquiryId: string, targetStatus: string) {
     console.log(`[Pipeline] Resetting Inquiry ${inquiryId} to starting state of ${targetStatus}`);
@@ -435,8 +202,8 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
 
     if (!inquiry) throw new Error("Inquiry not found");
 
-    // Idempotency: Clear EVERYTHING for this inquiry
-    await clearInquiryArtifacts(inquiryId);
+    // [Idempotency Fix] Defer clearing until we have confirmed new generation success
+    // await clearInquiryArtifacts(inquiryId);
 
     try {
         // --- PASS A: RESEARCH PACK (Gemini) ---
@@ -451,6 +218,10 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
         debugLog(`[Pass C] Writing Long-form Prose for: ${inquiryId}`);
         const articleProse = await runPassCWrite(inquiry, researchPack, plan, config);
 
+        // --- ATOMIC TRANSITION: CLEAR OLD DATA JUST BEFORE SAVING NEW ---
+        debugLog(`[Pipeline] Content generated successfully. Performing final cleanup of previous artifacts...`);
+        await clearInquiryArtifacts(inquiryId);
+
         // --- PERSISTENCE ---
 
         // 1. Create Generation Run Record
@@ -458,7 +229,7 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
             data: {
                 weeklyInquiryId: inquiryId,
                 mode: config.mode,
-                stage1Model: 'claude-3-5-sonnet-20241022',
+                stage1Model: 'claude-3-5-sonnet-latest',
                 stage1Provider: 'ANTHROPIC',
                 stage1Prompt: 'UA_PROSE_WRITE',
                 stage1Output: JSON.stringify(plan.spine_contract),
@@ -472,7 +243,7 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
             const sequence = (idx + 1).toString().padStart(2, '0');
             const uaId = `UA-POST-${inquiry.uaId}-${sequence}`;
 
-            const saved = await (prisma as any).textPost.create({
+            const saved = await prisma.textPost.create({
                 data: {
                     uaId,
                     weeklyInquiryId: inquiryId,
@@ -480,7 +251,7 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
                     index: idx,
                     title: post.title,
                     content: cleanString(post.content),
-                    researchContext: JSON.stringify(researchPack),
+                    researchPackData: JSON.stringify(researchPack),
                     status: 'EDITORIAL'
                 }
             });
@@ -503,16 +274,24 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
         }
 
         // 3. Persist Article
-        const cleanedArticle = cleanString(articleProse);
-        const article = await (prisma as any).article.upsert({
+        const sanitizedOutput = applyEditorialSanitization(articleProse);
+        const validation = validateArticle(sanitizedOutput, { researchPack, spineContract: plan.spine_contract });
+
+        const article = await prisma.article.upsert({
             where: { weeklyInquiryId: inquiryId },
             create: {
                 weeklyInquiryId: inquiryId,
-                draftContent: cleanedArticle,
+                rawOutput: articleProse,
+                draftContent: sanitizedOutput,
+                researchPackData: JSON.stringify(researchPack),
+                validationReport: JSON.stringify(validation),
                 status: 'EDITORIAL'
             },
             update: {
-                draftContent: cleanedArticle,
+                rawOutput: articleProse,
+                draftContent: sanitizedOutput,
+                researchPackData: JSON.stringify(researchPack),
+                validationReport: JSON.stringify(validation),
                 status: 'EDITORIAL'
             }
         });
@@ -524,14 +303,14 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
                 model: 'Claude-3.5-Sonnet-Deterministic',
                 provider: 'ANTHROPIC',
                 prompt: 'UA_PROSE_WRITE',
-                content: cleanedArticle,
+                content: sanitizedOutput,
                 tokensUsed: 0
             }
         });
 
         // Upload Article to Storage
         await StorageService.uploadAndRecord({
-            file: Buffer.from(cleanedArticle, 'utf8'),
+            file: Buffer.from(sanitizedOutput, 'utf8'),
             fileName: getIntelligibleName({
                 uaId: inquiry.uaId,
                 type: 'ARTICLE',
@@ -575,15 +354,19 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
 /**
  * Stage 0: Research Pack (Gemini)
  */
-async function runPassAResearchPack(inquiry: any, retryCount = 0): Promise<any> {
+async function runPassAResearchPack(inquiry: any, retryCount = 0, hint = ""): Promise<any> {
     const template = await getActivePrompt('UA_RESEARCH_PACK', PROMPTS.UA_RESEARCH_PACK);
     debugLog(`[Pass A] Building Research Pack for: ${inquiry.uaId}`);
-    const prompt = buildPrompt(template, {
+    let prompt = buildPrompt(template, {
         theme: inquiry.theme,
         thinking: inquiry.thinking || "",
         reality: inquiry.reality || "",
         rant: inquiry.rant || ""
     });
+
+    if (hint) {
+        prompt += `\n\nINSTRUCTION UPDATE: ${hint}`;
+    }
 
     const result = await generateContent('GEMINI', 'gemini-2.0-flash', prompt, {
         temperature: 0.2,
@@ -598,6 +381,25 @@ async function runPassAResearchPack(inquiry: any, retryCount = 0): Promise<any> 
         // Strict Validation: Sources
         if (!pack.sources || pack.sources.length === 0) {
             throw new Error("Research Pack failed: No sources found.");
+        }
+
+        // --- URL Health Check (Implementation Plan Fix) ---
+        debugLog(`[Pass A] Verifying ${pack.sources.length} citation URLs...`);
+        const verificationResults = await Promise.all(
+            pack.sources.map(async (s: any) => ({
+                id: s.id,
+                url: s.url,
+                health: await verifyUrl(s.url)
+            }))
+        );
+
+        const brokenCount = verificationResults.filter(r => !r.health.ok).length;
+        const brokenPercentage = (brokenCount / pack.sources.length) * 100;
+
+        if (brokenPercentage > 30 && retryCount < 1) {
+            debugLog(`[Pass A] High broken URL rate (${brokenPercentage.toFixed(1)}%). Retrying with ROBUST_SOURCES hint.`);
+            const robustHint = "The previous research returned too many broken links. Use ONLY high-authority, stable news/regulator domains (e.g., gov.uk, ft.com, reuters.com, bbc.co.uk).";
+            return runPassAResearchPack(inquiry, retryCount + 1, robustHint);
         }
 
         // Traceability Check
@@ -683,14 +485,14 @@ async function runPassCWrite(inquiry: any, researchPack: any, plan: any, config:
     // Model Selection
     // Default: Sonnet 3.5
     // Retry/Repair: Use latest Sonnet version (per user request)
-    let model = 'claude-3-5-sonnet-20241022';
+    let model = 'claude-3-5-sonnet-latest';
     let provider: LLMProvider = 'ANTHROPIC';
 
     if (retryCount >= 1 || repairAttempt >= 1) {
         model = 'claude-3-7-sonnet-20250219'; // Robust latest
     }
 
-    debugLog(`[Pass C] Writing with ${model}. (retryCount: ${retryCount}, repairAttempt: ${repairAttempt})`);
+    debugLog(`[Pass C] Writing with ${model}.`);
 
     let result;
     try {
@@ -699,83 +501,10 @@ async function runPassCWrite(inquiry: any, researchPack: any, plan: any, config:
             maxTokens: 8192
         });
     } catch (err: any) {
-        // Fallback to Sonnet Latest if 20241022 fails (handled in providers.ts, but safety here)
         throw err;
     }
 
-    let prose = cleanString(result.text.trim());
-
-    // --- TIER 0: HARD FAIL ---
-    const t0 = validateTier0(prose, { researchPack, spineContract: plan.spine_contract });
-    if (!t0.valid) {
-        debugLog(`[Tier 0 Fail] ${t0.errors.join(' | ')}`);
-        throw new Error(`Pipeline Halted (Tier 0): ${t0.errors[0]}`);
-    }
-
-    // --- TIER 1: STRUCTURAL BREACH (Rerun Pass C Once) ---
-    const t1 = validateTier1(prose, plan.spine_contract);
-    if (!t1.valid) {
-        debugLog(`[Tier 1 Fail] ${t1.errors.join(' | ')}`);
-        if (retryCount < 1) {
-            debugLog(`[Pass C] Structural Breach. Rerunning Pass C...`);
-            return runPassCWrite(inquiry, researchPack, plan, config, retryCount + 1, repairAttempt);
-        }
-        throw new Error(`Pipeline Halted (Tier 1): Structural Breach failed after retry.`);
-    }
-
-    // --- TIER 2: REPAIRABLE (Max 1 Repair Call) ---
-    const t2 = validateTier2(prose, researchPack);
-    if (!t2.valid) {
-        debugLog(`[Tier 2 Fail] ${t2.errors.join(' | ')}`);
-        if (repairAttempt < 1) {
-            debugLog(`[Pass C] Triggering targeted repair...`);
-
-            // Build Repair Prompt
-            const repairTemplate = `
-You are the Editorial Validator. The following article failed quality gates.
-FAILS:
-{{errors}}
-
-METRICS:
-{{metrics}}
-
-ARTICLE:
-{{article}}
-
-TASK:
-Fix only the violations listed above. 
-If depth is the issue, expand the thin sections by 2-3 paragraphs.
-If ending is the issue, rewrite the final paragraph to be a quiet, unresolved close with no questions.
-If references are missing, ensure citations match [SRC-ID] from research pack.
-
-Return the FULL fixed article.
-`;
-            const repairPrompt = buildPrompt(repairTemplate, {
-                errors: t2.errors.join('\n'),
-                metrics: JSON.stringify(t2.report),
-                article: prose
-            });
-
-            const repairResult = await generateContent(provider, model, repairPrompt, {
-                temperature: 0.3,
-                maxTokens: 8192
-            });
-
-            const repairedProse = cleanString(repairResult.text.trim());
-
-            // Re-validate Tier 2 after repair
-            const finalCheck = validateTier2(repairedProse, researchPack);
-            if (!finalCheck.valid) {
-                debugLog(`[Repair Failed] ${finalCheck.errors.join(' | ')}`);
-            }
-            return repairedProse;
-        }
-
-        // If we reach here, it failed Tier 2 but we already used the repair budget.
-        // We log the failure but continue to save what we have as 'EDITORIAL' review required.
-        debugLog(`[Tier 2 Warning] Article passed structural gates but failed quality gates: ${t2.errors.join(', ')}`);
-    }
-
+    let prose = result.text.trim();
     return prose;
 }
 
@@ -807,10 +536,7 @@ function cleanString(text: string): string {
 
 
 
-const countWords = (text: string) => text.trim().split(/\s+/).length;
-
 /**
- * Tier 3 — Voice Quality Gate
  * Validates audio integrity, duration, and file size.
  */
 async function validateTier3(scriptId: string, audioUrl: string): Promise<{ valid: boolean; errors: string[]; duration: number }> {
@@ -908,7 +634,7 @@ export async function runVoicePipeline(inquiryId: string, options?: { autoApprov
     return results;
 }
 
-export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: string[]) {
+export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: string[] | null, options?: { autoApprove?: boolean }) {
     const log = (msg: string) => {
         const line = `[${new Date().toISOString()}] ${msg}\n`;
         fs.appendFileSync('scribing.log', line);
@@ -982,11 +708,7 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
                     log(`Calling Structurizer for script ${script.id}...`);
                     const structRes = await generateContent('GEMINI' as LLMProvider, 'gemini-2.0-flash', structPrompt, { temperature: 0.1, responseMimeType: 'application/json' });
 
-                    let structJson = structRes.text;
-                    if (structJson.includes('```')) {
-                        structJson = structJson.split(/```(?:json)?/)[1].split('```')[0].trim();
-                    }
-                    const { scenes } = JSON.parse(structJson);
+                    const { scenes } = extractJSON(structRes.text);
                     log(`Structure received: ${scenes.length} segments.`);
 
                     // Phase 2: Literal Grounding for each scene
@@ -1025,6 +747,7 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
                                 prompt: s.prompt,
                                 scriptSegment: s.scriptSegment,
                                 duration: s.duration,
+                                approved: options?.autoApprove ?? false,
                                 status: 'PENDING'
                             } as any
                         }))

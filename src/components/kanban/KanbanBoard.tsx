@@ -23,10 +23,12 @@ import {
     LayersIcon,
     DownloadIcon,
     CopyIcon,
-    Share2Icon
+    Share2Icon,
+    ShieldIcon
 } from 'lucide-react';
 import StageEditor from '../editor/StageEditor';
 import ScriptEditor from '../editor/ScriptEditor';
+import EditorialDesk from './EditorialDesk';
 
 const STAGES = [
     { id: 'PENDING', name: 'Ideation', color: 'bg-slate-500', lightColor: 'bg-slate-50', darkColor: 'dark:bg-slate-900/30', accent: 'border-slate-200' },
@@ -41,13 +43,14 @@ export default function KanbanBoard() {
     const [items, setItems] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedItem, setSelectedItem] = useState<any>(null);
+    const [isEditorialDeskOpen, setIsEditorialDeskOpen] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [pipelineConfig, setPipelineConfig] = useState({
         mode: 'STANDARD',
         stage1Model: 'gemini-2.0-flash-exp',
         stage1Provider: 'GEMINI',
-        stage2Models: [{ model: 'claude-3-5-sonnet-20241022', provider: 'ANTHROPIC' }]
+        stage2Models: [{ model: 'claude-3-5-sonnet-latest', provider: 'ANTHROPIC' }]
     });
 
     useEffect(() => {
@@ -387,8 +390,23 @@ export default function KanbanBoard() {
                 )}
             </AnimatePresence>
 
+            <AnimatePresence>
+                {isEditorialDeskOpen && selectedItem && (
+                    <EditorialDesk
+                        inquiry={selectedItem}
+                        onClose={() => setIsEditorialDeskOpen(false)}
+                        onPublish={() => {
+                            moveStage(selectedItem.id, 'EDITORIAL', pipelineConfig, 'VOICE');
+                            setIsEditorialDeskOpen(false);
+                            setSelectedItem(null);
+                        }}
+                        onSave={fetchItems}
+                    />
+                )}
+            </AnimatePresence>
+
             <AnimatePresence mode="wait">
-                {selectedItem && (
+                {selectedItem && !isEditorialDeskOpen && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -415,6 +433,7 @@ export default function KanbanBoard() {
                                 setPipelineConfig={setPipelineConfig}
                                 onRegenerate={(config) => moveStage(selectedItem.id, 'PENDING', config)}
                                 isProcessing={isProcessing}
+                                onOpenEditorial={() => setIsEditorialDeskOpen(true)}
                             />
                         </motion.div>
                     </motion.div>
@@ -487,11 +506,13 @@ interface ItemDetailProps {
     setPipelineConfig: (config: any) => void;
     onRegenerate: (config: any) => void;
     isProcessing: boolean;
+    onOpenEditorial: () => void;
 }
 
 function ItemDetail({
     item, onClose, onMove, onMoveBack, onApprove, onRefresh,
-    pipelineConfig, setPipelineConfig, onRegenerate, isProcessing
+    pipelineConfig, setPipelineConfig, onRegenerate, isProcessing,
+    onOpenEditorial
 }: ItemDetailProps) {
     const statusInfo = STAGES.find(s => s.id === item.status);
     const [editingPart, setEditingPart] = useState<{ type: 'article' | 'script' | 'inquiry' | 'full_script', id: string, content: any, field?: string } | null>(null);
@@ -764,56 +785,62 @@ function ItemDetail({
                             <h3 className="text-sm font-black uppercase tracking-[0.3em] text-slate-400">Production Assets</h3>
                         </div>
                         <div className="grid grid-cols-1 gap-4">
-                            {[...(item.assets || []), ...(item.scripts?.flatMap((s: any) => s.assets) || [])]
-                                .filter(Boolean)
-                                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                                .map((asset: any) => (
-                                    <div key={asset.id} className="bg-white dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between group">
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${asset.kind === 'VIDEO' ? 'bg-emerald-100 text-emerald-600' :
-                                                asset.kind === 'AUDIO' ? 'bg-purple-100 text-purple-600' :
-                                                    asset.kind === 'CAPTIONS' ? 'bg-amber-100 text-amber-600' :
-                                                        'bg-blue-100 text-blue-600'
-                                                }`}>
-                                                {asset.kind === 'VIDEO' ? <VideoIcon size={18} /> :
-                                                    asset.kind === 'AUDIO' ? <MicIcon size={18} /> :
-                                                        asset.kind === 'CAPTIONS' ? <FileTextIcon size={18} /> :
-                                                            <FileTextIcon size={18} />}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="text-[11px] font-black uppercase tracking-tight text-slate-700 dark:text-slate-200">{asset.fileName}</p>
-                                                    <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-widest ${asset.provider === 'supabase' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                                                        {asset.provider}
-                                                    </span>
+                            {(() => {
+                                const allAssets = [...(item.assets || []), ...(item.scripts?.flatMap((s: any) => s.assets) || [])]
+                                    .filter(Boolean);
+                                // De-duplicate by ID
+                                const uniqueAssets = Array.from(new Map(allAssets.map(a => [a.id, a])).values());
+
+                                return uniqueAssets
+                                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                                    .map((asset: any) => (
+                                        <div key={asset.id} className="bg-white dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between group">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${asset.kind === 'VIDEO' ? 'bg-emerald-100 text-emerald-600' :
+                                                    asset.kind === 'AUDIO' ? 'bg-purple-100 text-purple-600' :
+                                                        asset.kind === 'CAPTIONS' ? 'bg-amber-100 text-amber-600' :
+                                                            'bg-blue-100 text-blue-600'
+                                                    }`}>
+                                                    {asset.kind === 'VIDEO' ? <VideoIcon size={18} /> :
+                                                        asset.kind === 'AUDIO' ? <MicIcon size={18} /> :
+                                                            asset.kind === 'CAPTIONS' ? <FileTextIcon size={18} /> :
+                                                                <FileTextIcon size={18} />}
                                                 </div>
-                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{asset.kind} • {new Date(asset.createdAt).toLocaleDateString()}</p>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-[11px] font-black uppercase tracking-tight text-slate-700 dark:text-slate-200">{asset.fileName}</p>
+                                                        <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-widest ${asset.provider === 'supabase' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                                            {asset.provider}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{asset.kind} • {new Date(asset.createdAt).toLocaleDateString()}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <a
-                                                href={asset.signedUrl || asset.driveWebViewLink || asset.publicUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-400 hover:text-black dark:hover:text-white rounded-xl transition-all border border-slate-100 dark:border-slate-600"
-                                                title="View Asset"
-                                            >
-                                                <ExternalLinkIcon size={16} />
-                                            </a>
-                                            {asset.driveDownloadLink && (
+                                            <div className="flex items-center gap-2">
                                                 <a
-                                                    href={asset.driveDownloadLink}
+                                                    href={asset.signedUrl || asset.driveWebViewLink || asset.publicUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-400 hover:text-black dark:hover:text-white rounded-xl transition-all border border-slate-100 dark:border-slate-600"
-                                                    title="Download"
+                                                    title="View Asset"
                                                 >
-                                                    <DownloadIcon size={16} />
+                                                    <ExternalLinkIcon size={16} />
                                                 </a>
-                                            )}
+                                                {asset.driveDownloadLink && (
+                                                    <a
+                                                        href={asset.driveDownloadLink}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-400 hover:text-black dark:hover:text-white rounded-xl transition-all border border-slate-100 dark:border-slate-600"
+                                                        title="Download"
+                                                    >
+                                                        <DownloadIcon size={16} />
+                                                    </a>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))
+                            })()}
                         </div>
                     </div>
                 )}
@@ -983,7 +1010,14 @@ function ItemDetail({
                                     {item.article.approved ? 'Approved' : 'Grant Approval'}
                                 </button>
                                 <button
-                                    onClick={() => setEditingPart({ type: 'article', id: item.article.id, content: item.article.draftContent })}
+                                    onClick={onOpenEditorial}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20"
+                                >
+                                    <ShieldIcon size={16} />
+                                    Launch Editorial Desk
+                                </button>
+                                <button
+                                    onClick={() => setEditingPart({ type: 'article', id: item.article.id, content: item.article.finalContent || item.article.draftContent })}
                                     className="p-3 bg-white dark:bg-slate-800 text-slate-400 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 transition-all shadow-sm"
                                 >
                                     <Edit3Icon size={20} />
@@ -991,7 +1025,7 @@ function ItemDetail({
                             </div>
                         </div>
                         <div className="bg-white dark:bg-slate-800/30 p-10 rounded-[2.5rem] border border-white dark:border-slate-800 shadow-xl shadow-black-[0.02] prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap leading-relaxed opacity-90 font-serif text-[15px]">
-                            {item.article.draftContent}
+                            {item.article.finalContent || item.article.draftContent}
                         </div>
                     </div>
                 )}
