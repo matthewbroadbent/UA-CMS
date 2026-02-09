@@ -51,6 +51,7 @@ export class SupabaseStorageProvider implements StorageProvider {
             renderId: params.renderId,
             bucket: bucket,
             objectKey: objectKey,
+            publicUrl: this.getPublicUrl(bucket, objectKey)
         };
     }
 

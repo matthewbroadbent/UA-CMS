@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeftIcon, SendIcon } from 'lucide-react';
 
@@ -8,7 +8,7 @@ export default function NewInquiry() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [form, setForm] = useState({
-        uaId: `UA-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${new Date().toISOString().slice(11, 16).replace(/:/g, '')}`,
+        uaId: '',
         theme: '',
         thinking: '',
         reality: '',
@@ -16,6 +16,11 @@ export default function NewInquiry() {
         nuclear: '',
         anythingElse: '',
     });
+
+    useEffect(() => {
+        const id = `UA-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${new Date().toISOString().slice(11, 16).replace(/:/g, '')}`;
+        setForm(prev => ({ ...prev, uaId: id }));
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

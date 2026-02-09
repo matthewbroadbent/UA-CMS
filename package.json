@@ -6,7 +6,8 @@
     "dev": "prisma generate && next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "smoke:db": "tsx scripts/smoke-db.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",

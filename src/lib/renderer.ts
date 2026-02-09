@@ -4,6 +4,7 @@ import fs from 'fs';
 import https from 'https';
 import { prisma } from './prisma';
 import { StorageService } from './storage';
+import { getIntelligibleName } from './naming';
 
 async function downloadFile(url: string, dest: string, retries = 3): Promise<void> {
     for (let i = 0; i < retries; i++) {
@@ -261,12 +262,17 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
                     try {
                         const videoAsset = await StorageService.uploadAndRecord({
                             file: outputPath,
-                            fileName: `${scriptId}_video.mp4`,
+                            fileName: getIntelligibleName({
+                                uaId: (script as any).weeklyInquiry?.uaId || 'UA',
+                                type: 'VIDEO',
+                                detail: script.durationType,
+                                extension: 'mp4'
+                            }),
                             kind: 'VIDEO',
                             renderId: scriptId,
                             videoScriptId: scriptId
                         });
-                        log(`[Storage] Video uploaded via ${videoAsset.provider}: ${videoAsset.fileName}`);
+                        log(`[Storage] Video uploaded: ${videoAsset.fileName}`);
                     } catch (err) {
                         console.error(`[Storage] Video upload failed:`, err);
                     }
@@ -275,12 +281,17 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
                         try {
                             const captionAsset = await StorageService.uploadAndRecord({
                                 file: assPath,
-                                fileName: `${scriptId}_captions.ass`,
+                                fileName: getIntelligibleName({
+                                    uaId: (script as any).weeklyInquiry?.uaId || 'UA',
+                                    type: 'CAPTIONS',
+                                    detail: script.durationType,
+                                    extension: 'ass'
+                                }),
                                 kind: 'CAPTIONS',
                                 renderId: scriptId,
                                 videoScriptId: scriptId
                             });
-                            log(`[Storage] Captions uploaded via ${captionAsset.provider}: ${captionAsset.fileName}`);
+                            log(`[Storage] Captions uploaded: ${captionAsset.fileName}`);
                         } catch (err) {
                             console.error(`[Storage] Captions upload failed:`, err);
                         }

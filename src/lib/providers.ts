@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
+import { debugLog } from "./pipeline";
 
 export type LLMProvider = 'GEMINI' | 'OPENAI' | 'ANTHROPIC';
 
@@ -93,12 +94,37 @@ async function generateOpenAI(modelName: string, prompt: string, options: Genera
 
 async function generateAnthropic(modelName: string, prompt: string, options: GenerationOptions): Promise<GenerationResult> {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-        model: modelName,
-        max_tokens: options.maxTokens || 4096,
-        messages: [{ role: "user", content: prompt }],
-        temperature: options.temperature,
-    });
+
+    let response;
+    try {
+        response = await anthropic.messages.create({
+            model: modelName,
+            max_tokens: options.maxTokens || 4096,
+            messages: [{ role: "user", content: prompt }],
+            temperature: options.temperature,
+        });
+    } catch (err: any) {
+        // Centralized 404 Fallback: If a specific version is not found, try a resilient alias
+        if (err.status === 404) {
+            let fallbackModel = '';
+            if (modelName === 'claude-3-5-sonnet-20241022') fallbackModel = 'claude-3-7-sonnet-20250219';
+            else if (modelName === 'claude-3-5-haiku-20241022') fallbackModel = 'claude-3-5-haiku-latest';
+
+            if (fallbackModel) {
+                debugLog(`[Providers] ${modelName} returned 404. Retrying with fallback: ${fallbackModel}`);
+                response = await anthropic.messages.create({
+                    model: fallbackModel,
+                    max_tokens: options.maxTokens || 4096,
+                    messages: [{ role: "user", content: prompt }],
+                    temperature: options.temperature,
+                });
+            } else {
+                throw err;
+            }
+        } else {
+            throw err;
+        }
+    }
 
     const text = response.content
         .filter((block: any) => block.type === 'text')

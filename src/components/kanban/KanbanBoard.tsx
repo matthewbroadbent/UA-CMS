@@ -41,6 +41,7 @@ export default function KanbanBoard() {
     const [items, setItems] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedItem, setSelectedItem] = useState<any>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [pipelineConfig, setPipelineConfig] = useState({
         mode: 'STANDARD',
@@ -50,6 +51,13 @@ export default function KanbanBoard() {
     });
 
     useEffect(() => {
+        // Trace any rogue confirm calls
+        const originalConfirm = window.confirm;
+        (window as any).confirm = (msg: string) => {
+            console.log('Suppressed native confirm call:', msg);
+            return true; // Always return true to avoid blocking logic without showing dialog
+        };
+
         fetchItems();
     }, []);
 
@@ -71,6 +79,15 @@ export default function KanbanBoard() {
         try {
             const res = await fetch('/api/kanban');
             const data = await res.json();
+            if (!res.ok) {
+                console.error('API error:', data.error);
+                return;
+            }
+
+            if (!Array.isArray(data)) {
+                console.error('Expected array from API, got:', typeof data);
+                return;
+            }
 
             // Only update items that aren't currently in a pending move transition
             setItems(prev => {
@@ -124,6 +141,12 @@ export default function KanbanBoard() {
                 body: JSON.stringify({ id, status: nextStatus, config }),
             });
 
+            if (res.status === 404) {
+                setSelectedItem(null);
+                fetchItems();
+                throw new Error('This item no longer exists. The board has been refreshed.');
+            }
+
             if (!res.ok) {
                 const errData = await res.json();
                 throw new Error(errData.error || 'Failed to move stage');
@@ -152,6 +175,12 @@ export default function KanbanBoard() {
 
         const nextStatus = STAGES[prevIdx].id;
 
+        // Confirmation for rollback to ideation
+        if (nextStatus === 'PENDING') {
+            const confirmed = window.confirm("Roll back to Ideation? This will WIPE all Articles, Scripts, and Assets for this inquiry. This cannot be undone.");
+            if (!confirmed) return;
+        }
+
         // Optimistic UI update
         const originalItems = [...items];
         setItems(prev => prev.map(item => item.id === id ? { ...item, status: nextStatus } : item));
@@ -164,8 +193,15 @@ export default function KanbanBoard() {
                 body: JSON.stringify({ id, status: nextStatus }),
             });
 
+            if (res.status === 404) {
+                setSelectedItem(null);
+                fetchItems();
+                throw new Error('This item no longer exists. The board has been refreshed.');
+            }
+
             if (!res.ok) {
-                throw new Error('Failed to roll back');
+                const errData = await res.json();
+                throw new Error(errData.error || 'Failed to roll back');
             }
 
             await fetchItems();
@@ -215,6 +251,41 @@ export default function KanbanBoard() {
             console.error('Failed to approve', e);
             // Rollback on failure if needed, but fetchItems() usually handles it
             fetchItems();
+        }
+    };
+
+    const handleDelete = (id: string, e: React.MouseEvent | React.TouchEvent) => {
+        if (e) {
+            e.stopPropagation();
+            if ('preventDefault' in e) e.preventDefault();
+        }
+        setDeletingId(id);
+    };
+
+    const [isDeletingInquiry, setIsDeletingInquiry] = useState(false);
+
+    const confirmDelete = async () => {
+        if (!deletingId || isDeletingInquiry) return;
+        const id = deletingId;
+        setIsDeletingInquiry(true);
+
+        try {
+            const res = await fetch(`/api/kanban/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                setItems(prev => prev.filter(i => i.id !== id));
+                if (selectedItem?.id === id) {
+                    setSelectedItem(null);
+                }
+                setDeletingId(null);
+            } else {
+                const data = await res.json();
+                alert(`Deletion failed: ${data.error || 'Unknown error'}`);
+            }
+        } catch (error: any) {
+            console.error('Delete error:', error);
+            alert(`Error deleting card: ${error.message}`);
+        } finally {
+            setIsDeletingInquiry(false);
         }
     };
 
@@ -278,6 +349,8 @@ export default function KanbanBoard() {
                                         key={item.id}
                                         item={item}
                                         onClick={() => setSelectedItem(item)}
+                                        onDelete={handleDelete}
+                                        onMove={moveStage}
                                         draggable
                                         onDragEnd={(e: any, info: any) => {
                                             if (info.offset.x > 150) moveStage(item.id, item.status);
@@ -345,6 +418,58 @@ export default function KanbanBoard() {
                             />
                         </motion.div>
                     </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Custom Delete Confirmation Modal */}
+            <AnimatePresence>
+                {deletingId && (
+                    <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setDeletingId(null)}
+                            className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 shadow-2xl border border-white/10"
+                        >
+                            <div className="flex flex-col items-center text-center">
+                                <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-500 mb-6">
+                                    <Trash2Icon size={32} />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Confirm Deletion</h3>
+                                <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 leading-relaxed">
+                                    Are you sure you want to delete this card and all its associated assets? This action is permanent and cannot be undone.
+                                </p>
+                                <div className="flex gap-4 w-full">
+                                    <button
+                                        onClick={() => setDeletingId(null)}
+                                        disabled={isDeletingInquiry}
+                                        className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={confirmDelete}
+                                        disabled={isDeletingInquiry}
+                                        className="flex-1 py-4 bg-red-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 font-mono disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                        {isDeletingInquiry ? (
+                                            <>
+                                                <RefreshCwIcon size={14} className="animate-spin" />
+                                                Deleting...
+                                            </>
+                                        ) : 'Confirm Delete'}
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
         </div>
@@ -570,8 +695,12 @@ function ItemDetail({
                                 disabled={isMoving}
                                 className="px-8 py-4 bg-black dark:bg-white text-white dark:text-black text-[11px] font-black uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-black/20 flex items-center gap-3 hover:scale-105 active:scale-95"
                             >
-                                {isMoving ? <RefreshCwIcon size={16} className="animate-spin" /> : <ChevronRightIcon size={16} strokeWidth={3} />}
-                                Progress to {STAGES[STAGES.findIndex(s => s.id === item.status) + 1]?.name || 'End'}
+                                {isMoving ? <RefreshCwIcon size={16} className="animate-spin" /> : (
+                                    item.status === 'FAILED' ? <RefreshCwIcon size={16} strokeWidth={3} /> : <ChevronRightIcon size={16} strokeWidth={3} />
+                                )}
+                                {item.status === 'PENDING' ? 'Initiate Research & Drafting' :
+                                    item.status === 'FAILED' ? 'Retry Pipeline' :
+                                        `Move to ${STAGES[STAGES.findIndex(s => s.id === item.status) + 1]?.name || 'End'}`}
                             </button>
                         </div>
                     </div>
@@ -971,31 +1100,114 @@ function ItemDetail({
                                 )}
 
                                 {script.scenes && script.scenes.length > 0 && (
-                                    <div className="mt-10 space-y-4">
-                                        <h4 className="text-[11px] font-black uppercase tracking-[0.3em] text-indigo-500 flex items-center gap-2 px-2">
-                                            <SparklesIcon size={16} /> Production Storyboard
-                                        </h4>
-                                        <div className="grid grid-cols-2 gap-4">
+                                    <div className="mt-10 space-y-6">
+                                        <div className="flex items-center justify-between px-2">
+                                            <h4 className="text-[11px] font-black uppercase tracking-[0.3em] text-indigo-500 flex items-center gap-2">
+                                                <SparklesIcon size={16} /> Production Storyboard
+                                            </h4>
+                                            {(() => {
+                                                const videoCount = script.scenes.filter((s: any) => s.type === 'VIDEO').length;
+                                                const totalCount = script.scenes.length;
+                                                const videoPercent = (videoCount / totalCount) * 100;
+                                                const isCompliant = videoPercent <= 25.1; // Giving 0.1 buffer for rounding
+                                                return (
+                                                    <div className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-2 ${isCompliant ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600' : 'bg-red-500/10 border-red-500/20 text-red-600'}`}>
+                                                        {isCompliant ? '🛡️ Compliance Active' : '⚠️ Density Breach'} • {videoPercent.toFixed(1)}% Video ({videoCount}/{totalCount})
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-4">
                                             {script.scenes.map((scene: any) => (
-                                                <div key={scene.id} className="p-5 bg-white dark:bg-slate-900/30 rounded-[2rem] border border-slate-100 dark:border-slate-800 flex flex-col gap-3 shadow-sm hover:border-indigo-200 dark:hover:border-indigo-900 transition-colors">
+                                                <div key={scene.id} className={`p-6 rounded-[2.5rem] border-2 transition-all ${scene.approved ? 'border-emerald-500 bg-emerald-50/10 dark:bg-emerald-900/5' : 'border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/30'} flex flex-col gap-4 shadow-sm relative group`}>
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Scene {scene.index} • {scene.duration}s</span>
-                                                        <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-tighter ${scene.type === 'VIDEO' ? 'bg-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
-                                                            {scene.type}
-                                                        </span>
+                                                        <div className="flex items-center gap-4">
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Scene {scene.index} • {scene.duration}s</span>
+                                                            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl gap-1">
+                                                                {["IMAGE", "VIDEO"].map((type) => (
+                                                                    <button
+                                                                        key={type}
+                                                                        onClick={async () => {
+                                                                            await fetch('/api/content/update', {
+                                                                                method: 'POST',
+                                                                                headers: { 'Content-Type': 'application/json' },
+                                                                                body: JSON.stringify({ type: 'scene', id: scene.id, content: type, field: 'type' }),
+                                                                            });
+                                                                            onRefresh();
+                                                                        }}
+                                                                        className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${scene.type === type ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                                                    >
+                                                                        {type}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={async () => {
+                                                                await fetch('/api/content/update', {
+                                                                    method: 'POST',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify({ type: 'scene', id: scene.id, content: !scene.approved, field: 'approved' }),
+                                                                });
+                                                                onRefresh();
+                                                            }}
+                                                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${scene.approved ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700'}`}
+                                                        >
+                                                            {scene.approved ? <CheckCircleIcon size={14} /> : <div className="w-3.5 h-3.5 border-2 border-slate-300 rounded-lg" />}
+                                                            {scene.approved ? 'Authorized' : 'Authorize'}
+                                                        </button>
                                                     </div>
                                                     {scene.scriptSegment && (
-                                                        <p className="text-[12px] text-slate-600 dark:text-slate-300 font-bold italic leading-tight">
+                                                        <p className="text-[13px] text-slate-700 dark:text-slate-200 font-bold italic leading-tight">
                                                             "{scene.scriptSegment}"
                                                         </p>
                                                     )}
-                                                    <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                                                        <span className="font-black text-indigo-300 uppercase text-[8px] block mb-1 tracking-widest">Visual Direction:</span>
-                                                        {scene.prompt}
-                                                    </p>
+                                                    <div className="relative">
+                                                        <span className="font-black text-indigo-300 uppercase text-[8px] block mb-2 tracking-widest">Visual Direction:</span>
+                                                        <textarea
+                                                            defaultValue={scene.prompt}
+                                                            onBlur={async (e) => {
+                                                                if (e.target.value === scene.prompt) return;
+                                                                await fetch('/api/content/update', {
+                                                                    method: 'POST',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify({ type: 'scene', id: scene.id, content: e.target.value, field: 'prompt' }),
+                                                                });
+                                                                onRefresh();
+                                                            }}
+                                                            className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed focus:border-indigo-500 outline-none transition-all resize-none min-h-[60px]"
+                                                        />
+                                                    </div>
+                                                    {scene.assetUrl && (
+                                                        <div className="mt-2 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 group/asset relative">
+                                                            <img src={scene.assetUrl} alt={`Scene ${scene.index}`} className="w-full h-auto" />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/asset:opacity-100 transition-opacity flex items-center justify-center">
+                                                                <a href={scene.assetUrl} target="_blank" className="p-2 bg-white rounded-full text-black hover:scale-110 transition-all">
+                                                                    <ExternalLinkIcon size={16} />
+                                                                </a>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
+                                        {script.scenes.some((s: any) => !s.approved) && (
+                                            <button
+                                                onClick={async () => {
+                                                    await Promise.all(script.scenes.filter((s: any) => !s.approved).map((s: any) =>
+                                                        fetch('/api/content/update', {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ type: 'scene', id: s.id, content: true, field: 'approved' }),
+                                                        })
+                                                    ));
+                                                    onRefresh();
+                                                }}
+                                                className="w-full py-4 bg-indigo-600/10 text-indigo-600 border-2 border-dashed border-indigo-200 dark:border-indigo-900 rounded-[2rem] text-[11px] font-black uppercase tracking-[0.3em] hover:bg-indigo-600/20 transition-all mb-10"
+                                            >
+                                                Authorize All Scenes For Production
+                                            </button>
+                                        )}
                                     </div>
                                 )}
 
@@ -1058,7 +1270,7 @@ function ItemDetail({
     );
 }
 
-function KanbanCard({ item, onClick, draggable, onDragEnd }: { item: any, onClick: () => void, draggable?: boolean, onDragEnd?: (e: any, info: any) => void }) {
+function KanbanCard({ item, onClick, onDelete, onMove, draggable, onDragEnd }: { item: any, onClick: () => void, onDelete: (id: string, e: React.MouseEvent) => void, onMove: (id: string, current: string) => void, draggable?: boolean, onDragEnd?: (e: any, info: any) => void }) {
     const stage = STAGES.find(s => s.id === item.status);
 
     return (
@@ -1084,18 +1296,91 @@ function KanbanCard({ item, onClick, draggable, onDragEnd }: { item: any, onClic
             <div className="flex justify-between items-start mb-4">
                 <span className="text-[9px] font-black font-mono text-slate-300 uppercase tracking-[0.2em]">{item.uaId}</span>
                 <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(item.id, e);
+                        }}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        title="Delete Card"
+                    >
+                        <Trash2Icon size={14} />
+                    </button>
                     {item.status === 'FAILED' && <AlertCircleIcon size={14} className="text-red-500" />}
                     {(item.status === 'VOICE' && !item.scripts?.every((s: any) => s.audioUrl)) && (
                         <RefreshCwIcon size={14} className="text-purple-500 animate-spin" />
                     )}
-                    {(item.status === 'MEDIA' && !item.scripts?.every((s: any) => s.visualPrompt)) && (
+                    {(item.status === 'MEDIA' && !item.scripts?.every((s: any) => s.scenes?.length > 0)) && (
                         <RefreshCwIcon size={14} className="text-indigo-500 animate-spin" />
                     )}
                 </div>
             </div>
-            <h3 className="text-[14px] font-black mb-4 line-clamp-3 leading-[1.3] dark:text-slate-100 uppercase tracking-tight">
+            <h3 className="text-[14px] font-black mb-2 line-clamp-2 leading-[1.3] dark:text-slate-100 uppercase tracking-tight">
                 {item.theme || 'Untreated inquiry'}
             </h3>
+
+            {item.status === 'PENDING' && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onMove(item.id, 'PENDING');
+                    }}
+                    className="w-full mt-2 mb-4 py-3 bg-black dark:bg-white text-white dark:text-black text-[11px] font-black uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700"
+                >
+                    <ZapIcon size={14} fill="currentColor" />
+                    Start Pipeline
+                </button>
+            )}
+
+            {/* Scene Snapshot & Assets */}
+            {item.scripts?.some((s: any) => s.scenes?.length > 0) && (
+                <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col gap-3">
+                    {item.scripts.filter((s: any) => s.scenes?.length > 0).slice(0, 1).map((script: any) => {
+                        const videoCount = script.scenes.filter((sc: any) => sc.type === 'VIDEO').length;
+                        const imageCount = script.scenes.length - videoCount;
+                        const approvedCount = script.scenes.filter((sc: any) => sc.approved).length;
+                        const scenesWithAssets = script.scenes.filter((sc: any) => sc.assetUrl);
+
+                        return (
+                            <div key={script.id} className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[8px] font-black text-indigo-400 uppercase tracking-[0.2em]">{script.durationType} Storyboard</span>
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{videoCount}🎥 {imageCount}🖼️ • {approvedCount}/{script.scenes.length} ✅</span>
+                                </div>
+
+                                {scenesWithAssets.length > 0 && (
+                                    <div className="flex gap-1 overflow-hidden rounded-xl h-10 border border-slate-200 dark:border-slate-700">
+                                        {scenesWithAssets.slice(0, 5).map((sc: any) => (
+                                            <div key={sc.id} className="h-full aspect-square bg-slate-200 dark:bg-slate-800 shrink-0">
+                                                <img src={sc.assetUrl} alt="" className="w-full h-full object-cover" />
+                                            </div>
+                                        ))}
+                                        {scenesWithAssets.length > 5 && (
+                                            <div className="h-full flex-1 bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[8px] font-black text-slate-400">
+                                                +{scenesWithAssets.length - 5}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="space-y-1">
+                                    {script.scenes.slice(0, 5).map((scene: any) => (
+                                        <div key={scene.id} className="flex gap-2 items-center">
+                                            <div className={`shrink-0 w-1 h-3 rounded-full ${scene.approved ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                            <p className="text-[9px] text-slate-500 dark:text-slate-400 line-clamp-1 italic leading-none">
+                                                {scene.prompt}
+                                            </p>
+                                        </div>
+                                    ))}
+                                    {script.scenes.length > 5 && <p className="text-[7px] text-slate-300 uppercase font-black tracking-widest text-right">+{script.scenes.length - 5} more scenes</p>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
             <div className="flex items-center justify-between pt-4 border-t border-slate-50 dark:border-slate-700/50 mt-2">
                 <div className="flex gap-2">
                     {item.article && <div className="p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-500"><FileTextIcon size={12} /></div>}

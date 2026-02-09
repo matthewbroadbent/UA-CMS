@@ -1,11 +1,29 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "./prisma";
 import fs from "fs";
+import path from "path";
+import https from "https";
 import { fal } from "@fal-ai/client";
+import { StorageService } from "./storage";
+import { getIntelligibleName } from "./naming";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-export async function planScenes(scriptId: string) {
+async function downloadToBuffer(url: string): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+        https.get(url, (res) => {
+            if (res.statusCode !== 200) {
+                reject(new Error(`Failed to download ${url}: ${res.statusCode}`));
+                return;
+            }
+            const data: any[] = [];
+            res.on('data', (chunk) => data.push(chunk));
+            res.on('end', () => resolve(Buffer.concat(data)));
+        }).on('error', reject);
+    });
+}
+
+export async function planScenes(scriptId: string, targetDuration?: number) {
     const script = await prisma.videoScript.findUnique({
         where: { id: scriptId },
         include: { weeklyInquiry: true }
@@ -18,6 +36,8 @@ export async function planScenes(scriptId: string) {
         generationConfig: { responseMimeType: "application/json" }
     });
 
+    const durationToFill = targetDuration || (parseInt(script.durationType) || 30);
+
     const prompt = `
 You are a high-end Business Documentary Director and Prompt Engineer. 
 Your style is professional, modern, authoritative, and cinematic (BBC Documentary / FT standard).
@@ -25,6 +45,9 @@ Your style is professional, modern, authoritative, and cinematic (BBC Documentar
 TASK:
 Break this script into a visual shot list.
 For each scene, write a highly detailed "Agentic Prompt" optimized for high-end models like Flux or Midjourney.
+
+TARGET TOTAL DURATION: ${durationToFill.toFixed(1)} seconds.
+IMPORTANT: The sum of all 'duration' fields in your response MUST EQUAL ${durationToFill.toFixed(1)} seconds exactly.
 
 PROMPT RULES:
 - Use cinematic lighting terms (rembrandt lighting, volumetric fog, anamorphic lens).
@@ -80,7 +103,8 @@ export async function generateMediaAsset(sceneId: string) {
     };
 
     const scene = await prisma.scene.findUnique({
-        where: { id: sceneId }
+        where: { id: sceneId },
+        include: { videoScript: { include: { weeklyInquiry: true } } }
     });
 
     if (!scene) return;
@@ -97,8 +121,14 @@ export async function generateMediaAsset(sceneId: string) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             log(`Generating ${scene.type} for scene ${sceneId} (Attempt ${attempt}/${maxRetries})...`);
+
+            // Normalize Fal Key
+            if (!process.env.FAL_KEY && !process.env.FAL_API_KEY) {
+                throw new Error("Missing FAL_KEY in environment");
+            }
+
             const result: any = await fal.subscribe(
-                scene.type === 'VIDEO' ? "fal-ai/veo3.1/fast" : "fal-ai/nano-banana",
+                scene.type === 'VIDEO' ? "fal-ai/luma-dream-machine" : "fal-ai/flux/schnell",
                 {
                     input: {
                         prompt: scene.prompt,
@@ -110,9 +140,9 @@ export async function generateMediaAsset(sceneId: string) {
                 }
             );
 
-            // Harden extraction (handles both flat and nested 'data' structures)
+            // Harden extraction
             let mediaUrl = '';
-            const data = result.data || result; // Use nested data if available, else fallback to top-level
+            const data = result.data || result;
 
             if (scene.type === 'VIDEO') {
                 mediaUrl = data.video?.url || data.url || '';
@@ -127,15 +157,33 @@ export async function generateMediaAsset(sceneId: string) {
 
             log(`Asset generated successfully for scene ${sceneId}: ${mediaUrl}`);
 
+            // NEW: Download from Fal and Re-upload to our Storage with intelligible name
+            log(`Re-uploading ${scene.type} to primary storage with intelligible name...`);
+            const buffer = await downloadToBuffer(mediaUrl);
+            const ext = scene.type === 'VIDEO' ? 'mp4' : 'png';
+
+            const asset = await StorageService.uploadAndRecord({
+                file: buffer,
+                fileName: getIntelligibleName({
+                    uaId: (scene as any).videoScript?.weeklyInquiry?.uaId || 'UA',
+                    type: 'SCENE',
+                    detail: `scene_${scene.index}_${(scene as any).videoScript?.durationType || '30S'}`,
+                    extension: ext
+                }),
+                kind: scene.type === 'VIDEO' ? 'VIDEO' : 'IMAGE',
+                renderId: (scene as any).videoScriptId,
+                videoScriptId: (scene as any).videoScriptId
+            });
+
             await prisma.scene.update({
                 where: { id: sceneId },
                 data: {
-                    assetUrl: mediaUrl,
+                    assetUrl: asset.publicUrl || asset.driveWebViewLink || mediaUrl,
                     status: 'COMPLETED'
                 }
             });
 
-            return mediaUrl;
+            return asset.publicUrl || asset.driveWebViewLink || mediaUrl;
         } catch (error: any) {
             lastError = error;
             log(`ATTEMPT ${attempt} FAILED for scene ${sceneId}: ${error.message}`);

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateScripts } from '@/lib/gemini';
 import { generateSpeech } from '@/lib/voice';
-import { runPipeline, runMediaPipeline } from '@/lib/pipeline';
+import { runPipeline, runMediaPipeline, runVoicePipeline, clearInquiryArtifacts, resetInquiryToStartingState } from '@/lib/pipeline';
 import fs from 'fs';
 
 function debugLog(msg: string) {
@@ -31,6 +31,17 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Item not found' }, { status: 404 });
         }
 
+        // Regression Reset Logic:
+        // If the move is backwards (regression), reset to starting state
+        const STAGE_ORDER = ['PENDING', 'EDITORIAL', 'VOICE', 'MEDIA', 'FINAL_RENDER', 'PUBLISHED'];
+        const currentIdx = STAGE_ORDER.indexOf(item.status);
+        const targetIdx = STAGE_ORDER.indexOf(status);
+
+        if (targetIdx < currentIdx) {
+            debugLog(`[REGRESSION] Rolling back from ${item.status} to ${status}. Resetting to starting state.`);
+            await resetInquiryToStartingState(id, status);
+        }
+
         // Handle Stage-Specific Logic (Automatic actions on manual move)
         if (status === 'EDITORIAL') {
             debugLog(`[EDITORIAL] Starting Pipeline for: ${id}`);
@@ -47,18 +58,8 @@ export async function POST(req: Request) {
             };
 
             try {
-                debugLog(`[EDITORIAL] Triggering runPipeline...`);
-                let result;
-                try {
-                    result = await runPipeline(id, pipelineConfig);
-                } catch (err: any) {
-                    debugLog(`[EDITORIAL] Primary Pipeline Failed (${err.message}). Attempting Gemini Fallback...`);
-                    const fallbackConfig = {
-                        ...pipelineConfig,
-                        stage2Models: [{ model: 'gemini-2.0-flash', provider: 'GEMINI' }]
-                    };
-                    result = await runPipeline(id, fallbackConfig);
-                }
+                debugLog(`[EDITORIAL] Triggering runPipeline (Deterministic 3-Pass)...`);
+                const result = await runPipeline(id, pipelineConfig);
 
                 debugLog(`[EDITORIAL] Article generated. RunID: ${result.runId}`);
 
@@ -93,25 +94,24 @@ export async function POST(req: Request) {
         }
 
         if (status === 'VOICE') {
-            debugLog(`[VOICE] Generating speech...`);
-            for (const script of item.scripts) {
-                if (script.approved) {
-                    const text = [script.hook, script.script, script.closingLine].filter(Boolean).join('\n\n');
-                    const audioUrl = await generateSpeech(text, script.id);
-                    await prisma.videoScript.update({
-                        where: { id: script.id },
-                        data: { audioUrl, status: 'VOICE_GENERATED' }
-                    });
-                }
+            debugLog(`[VOICE] Starting Voice Pipeline for: ${id}`);
+            try {
+                await runVoicePipeline(id, { autoApprove: true });
+                debugLog(`[VOICE] Voice Pipeline complete.`);
+            } catch (voiceErr: any) {
+                debugLog(`[VOICE] VOICE PIPELINE FAILURE: ${voiceErr.message}`);
+                console.error(`[STAGE_MOVE] [VOICE] VOICE PIPELINE FAILURE:`, voiceErr);
+                throw new Error(`Voice Pipeline Failed: ${voiceErr.message}`);
             }
-            debugLog(`[VOICE] Speech generation complete.`);
         }
 
         if (status === 'MEDIA') {
             debugLog(`[MEDIA] Starting Media Pipeline...`);
             try {
-                await runMediaPipeline(id);
-                debugLog(`[MEDIA] Media Pipeline triggered.`);
+                // Support targeted script selection (e.g., only 30s)
+                const selectedScripts = config?.selectedScriptIds || null;
+                await runMediaPipeline(id, selectedScripts);
+                debugLog(`[MEDIA] Media Pipeline complete.`);
             } catch (mediaErr: any) {
                 debugLog(`[MEDIA] MEDIA PIPELINE FAILURE: ${mediaErr.message}`);
                 console.error(`[STAGE_MOVE] [MEDIA] MEDIA PIPELINE FAILURE:`, mediaErr);

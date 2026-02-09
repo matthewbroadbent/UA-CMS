@@ -59,7 +59,17 @@ export async function GET() {
             }
             item.scripts = await Promise.all(item.scripts.map(async (script: any) => ({
                 ...script,
-                assets: await enrichAssets(script.assets)
+                assets: await enrichAssets(script.assets),
+                scenes: script.scenes ? await Promise.all(script.scenes.map(async (scene: any) => ({
+                    ...scene,
+                    assetUrl: (scene.assetUrl && !scene.assetUrl.startsWith('http'))
+                        ? await StorageService.getSignedUrl({
+                            provider: 'supabase',
+                            bucket: (scene.type === 'VIDEO') ? (process.env.UA_SUPABASE_VIDEO_BUCKET || 'ua-video') : (process.env.UA_SUPABASE_VIDEO_BUCKET || 'ua-video'),
+                            objectKey: scene.assetUrl
+                        })
+                        : scene.assetUrl
+                }))) : []
             })));
             item.textPosts = await Promise.all(item.textPosts.map(async (post: any) => ({
                 ...post,

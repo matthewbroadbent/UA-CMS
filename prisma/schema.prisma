@@ -100,8 +100,9 @@ model VideoScript {
   script          String        @db.Text
   closingLine     String?       @db.Text
   
-  audioUrl        String?       // Local path or URL
-  videoUrl        String?       // Local path or URL
+  audioUrl          String?       // Local path or URL
+  actualAudioDuration Float?       // Probed duration from FFmpeg
+  videoUrl          String?       // Local path or URL
   aspectRatio     String        @default("1:1") // 1:1, 9:16
   approved        Boolean       @default(false)
   status          ScriptStatus  @default(DRAFT)
@@ -129,6 +130,7 @@ model Scene {
   scriptSegment   String?       @db.Text // The part of the script read during this scene
   duration        Float
   assetUrl        String?       // Local path or URL
+  approved        Boolean       @default(false)
   status          String        @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
   
   createdAt       DateTime      @default(now())
@@ -205,13 +207,13 @@ model DriveOutput {
   
   // Relations
   videoScriptId     String?
-  videoScript       VideoScript? @relation(fields: [videoScriptId], references: [id], onDelete: SetNull)
+  videoScript       VideoScript? @relation(fields: [videoScriptId], references: [id], onDelete: Cascade)
   articleId         String?
-  article           Article?     @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  article           Article?     @relation(fields: [articleId], references: [id], onDelete: Cascade)
   weeklyInquiryId   String?
-  weeklyInquiry     WeeklyInquiry? @relation(fields: [weeklyInquiryId], references: [id], onDelete: SetNull)
+  weeklyInquiry     WeeklyInquiry? @relation(fields: [weeklyInquiryId], references: [id], onDelete: Cascade)
   textPostId        String?
-  textPost          TextPost?    @relation(fields: [textPostId], references: [id], onDelete: SetNull)
+  textPost          TextPost?    @relation(fields: [textPostId], references: [id], onDelete: Cascade)
 }
 
 model OutputAsset {
@@ -236,11 +238,11 @@ model OutputAsset {
 
   // Relations
   videoScriptId     String?
-  videoScript       VideoScript? @relation(fields: [videoScriptId], references: [id], onDelete: SetNull)
+  videoScript       VideoScript? @relation(fields: [videoScriptId], references: [id], onDelete: Cascade)
   articleId         String?
-  article           Article?     @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  article           Article?     @relation(fields: [articleId], references: [id], onDelete: Cascade)
   weeklyInquiryId   String?
-  weeklyInquiry     WeeklyInquiry? @relation(fields: [weeklyInquiryId], references: [id], onDelete: SetNull)
+  weeklyInquiry     WeeklyInquiry? @relation(fields: [weeklyInquiryId], references: [id], onDelete: Cascade)
   textPostId        String?
-  textPost          TextPost?    @relation(fields: [textPostId], references: [id], onDelete: SetNull)
+  textPost          TextPost?    @relation(fields: [textPostId], references: [id], onDelete: Cascade)
 }
