@@ -5,9 +5,11 @@ import { prisma } from "./prisma";
 import { StorageService } from "./storage";
 import { getIntelligibleName } from "./naming";
 
-const client = new ElevenLabsClient({
-    apiKey: process.env.ELEVENLABS_API_KEY,
-});
+// Lazy initialisation — client created at call time, not module load time,
+// so the build doesn't fail when env vars aren't present in the Docker layer.
+function getClient() {
+    return new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY });
+}
 
 /**
  * Converts numbers and symbols to spoken words for ElevenLabs natural pronunciation.
@@ -35,7 +37,7 @@ export async function generateSpeech(text: string, scriptId: string, weeklyInqui
         });
 
         const sanitizedText = sanitizeTextForTTS(text);
-        const audio = await client.textToSpeech.convert(
+        const audio = await getClient().textToSpeech.convert(
             process.env.ELEVENLABS_VOICE_ID || "7ZJdaADoQFRYkRSUhLQt", // Default UA voice
             {
                 text: sanitizedText,
