@@ -3,9 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: ua-cms
     restart: always
     ports:
       - "3000:3000"
     env_file: .env
     environment:
       NODE_ENV: production
+    networks:
+      - n8n_web
+
+networks:
+  n8n_web:
+    external: true
