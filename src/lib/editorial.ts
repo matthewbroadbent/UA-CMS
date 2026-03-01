@@ -84,11 +84,48 @@ export function validateUrl(url: string): { valid: boolean; reason?: string; can
 }
 
 /**
+ * Strips redirect/opaque URLs from article text.
+ * Markdown links with redirect URLs have their link text preserved.
+ * Bare redirect URLs are removed entirely.
+ */
+export function sanitizeRedirectUrls(text: string): string {
+    if (!text) return "";
+
+    const redirectPatterns = [
+        "vertexaisearch.cloud.google.com",
+        "google.com/search",
+        "googlecloud",
+        "atp.ai",
+        "bing.com/search",
+        "google.com/url",
+        "t.co/",
+        "bit.ly/"
+    ];
+
+    const isRedirect = (url: string) =>
+        redirectPatterns.some(p => url.toLowerCase().includes(p.toLowerCase()));
+
+    // 1. Markdown links: [text](redirect-url) → text
+    let output = text.replace(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, (match, linkText, url) => {
+        return isRedirect(url) ? linkText : match;
+    });
+
+    // 2. Bare redirect URLs → strip entirely
+    output = output.replace(/https?:\/\/\S+/g, (url) => {
+        const cleanUrl = url.replace(/[.,;:!?)\]]+$/, '');
+        return isRedirect(cleanUrl) ? '' : url;
+    });
+
+    return output;
+}
+
+/**
  * Applies all safe deterministic repairs.
  */
 export function applyEditorialSanitization(text: string): string {
     let output = text;
     output = sanitizeEncoding(output);
     output = sanitizeCitations(output);
+    output = sanitizeRedirectUrls(output);
     return output;
 }

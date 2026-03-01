@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+
+export const maxDuration = 800; // Vercel Pro: allow up to 800s for full AI pipeline
 import { generateScripts } from '@/lib/gemini';
 import { generateSpeech } from '@/lib/voice';
 import { runPipeline, runMediaPipeline, runVoicePipeline, clearInquiryArtifacts, resetInquiryToStartingState } from '@/lib/pipeline';
+import { applyEditorialSanitization } from '@/lib/editorial';
+import { validateArticle } from '@/lib/validator';
 import fs from 'fs';
 
 function debugLog(msg: string) {
     const time = new Date().toISOString();
     try {
-        fs.appendFileSync('debug.log', `[${time}] ${msg}\n`);
+        fs.appendFileSync('/tmp/debug.log', `[${time}] ${msg}\n`);
     } catch (e) {
         console.error("Failed to write to debug.log", e);
     }
@@ -100,19 +104,30 @@ export async function POST(req: Request) {
         if (status === 'VOICE') {
             debugLog(`[VOICE] Starting Voice Pipeline for: ${id}`);
 
-            // SECURITY GATE: Prevent moving to VOICE if there are SYSTEM-BLOCK issues
-            if (item.article?.validationReport && item.article.validationReport.trim() !== '') {
+            // SECURITY GATE: Re-validate the live content (not the cached report).
+            // Prefer finalContent (user-edited) over draftContent (AI-generated).
+            const articleContent = item.article?.finalContent || item.article?.draftContent;
+            if (articleContent) {
                 try {
-                    const report = JSON.parse(item.article.validationReport);
-                    if (report && report.status === 'SYSTEM-BLOCK') {
-                        debugLog(`[VOICE] BLOCKED: Article has SYSTEM-BLOCK validation errors.`);
+                    const researchPack = item.article.researchPackData
+                        ? JSON.parse(item.article.researchPackData)
+                        : null;
+                    const freshValidation = validateArticle(articleContent, { researchPack, spineContract: true });
+
+                    if (freshValidation.status === 'SYSTEM-BLOCK') {
+                        const blockers = freshValidation.items.filter((i: any) => i.severity === 'SYSTEM-BLOCK');
+                        const blockerSummary = blockers.map((i: any) => `[${i.code}] ${i.message}`).join(' | ');
+                        debugLog(`[VOICE] BLOCKED: ${blockerSummary}`);
+                        const errorDetail = blockers.map((i: any) => `• ${i.message}`).join('\n');
                         return NextResponse.json({
-                            error: 'Publication blocked: Article has critical validation errors that must be resolved in the Editorial Desk.',
-                            report
+                            error: `Publication blocked — critical validation errors:\n${errorDetail}`,
+                            report: freshValidation
                         }, { status: 403 });
                     }
+
+                    debugLog(`[VOICE] Fresh validation passed with status: ${freshValidation.status}`);
                 } catch (e) {
-                    debugLog(`[VOICE] Warning: Malformed validation report for ${id}. Skipping gate.`);
+                    debugLog(`[VOICE] Warning: Validation failed unexpectedly. Skipping gate.`);
                 }
             }
 

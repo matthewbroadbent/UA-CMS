@@ -63,6 +63,10 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, initialDelay =
         try {
             return await fn();
         } catch (err: any) {
+            // Non-retryable: content blocked by Gemini safety/recitation filters
+            const isNonRetryable = err._nonRetryable === true;
+            if (isNonRetryable) throw err;
+
             const is429 = err.status === 429 ||
                 err.message?.includes("429") ||
                 err.message?.includes("Resource exhausted") ||
@@ -81,7 +85,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, initialDelay =
     throw new Error("Max retries exceeded");
 }
 
-async function generateGemini(modelName: string, prompt: string, options: GenerationOptions): Promise<GenerationResult> {
+async function generateGemini(modelName: string, prompt: string, options: GenerationOptions, recitationRetry = false): Promise<GenerationResult> {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
     const model = genAI.getGenerativeModel({
         model: modelName,
@@ -96,6 +100,29 @@ async function generateGemini(modelName: string, prompt: string, options: Genera
     return await withRetry(async () => {
         const result = await model.generateContent(prompt);
         const response = await result.response;
+
+        const finishReason = response.candidates?.[0]?.finishReason;
+        if (finishReason && finishReason !== 'STOP') {
+            if (finishReason === 'MAX_TOKENS') {
+                debugLog(`[Providers] Gemini hit MAX_TOKENS. Falling back to Claude (claude-sonnet-4-6)...`);
+                return await generateAnthropic('claude-sonnet-4-6', prompt, options);
+            }
+            if (finishReason === 'RECITATION' && !recitationRetry) {
+                debugLog(`[Providers] Gemini RECITATION detected. Retrying with paraphrase instruction...`);
+                const augmentedPrompt = prompt + '\n\nCRITICAL: Do not quote any source text verbatim. Restate all findings, statistics and excerpts entirely in your own words. Do not reproduce copyrighted text under any circumstances.';
+                return await generateGemini(modelName, augmentedPrompt, options, true);
+            }
+            const err: any = new Error(
+                finishReason === 'RECITATION'
+                    ? `Gemini blocked this generation due to RECITATION (potential copyrighted content detected). The research topic may need rephrasing.`
+                    : finishReason === 'SAFETY'
+                    ? `Gemini blocked this generation due to SAFETY filters.`
+                    : `Gemini generation ended unexpectedly with reason: ${finishReason}`
+            );
+            err._nonRetryable = true;
+            throw err;
+        }
+
         return {
             text: response.text(),
         };

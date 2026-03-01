@@ -93,7 +93,7 @@ RETURN JSON:
 export async function generateMediaAsset(sceneId: string) {
     const log = (msg: string) => {
         const line = `[${new Date().toISOString()}] [FAL] ${msg}\n`;
-        fs.appendFileSync('scribing.log', line);
+        fs.appendFileSync('/tmp/scribing.log', line);
         console.log(`[FAL] ${msg}`);
     };
 
@@ -123,7 +123,7 @@ export async function generateMediaAsset(sceneId: string) {
             }
 
             const result: any = await fal.subscribe(
-                scene.type === 'VIDEO' ? "fal-ai/luma-dream-machine" : "fal-ai/flux/schnell",
+                scene.type === 'VIDEO' ? "fal-ai/luma-dream-machine/ray-2-flash" : "fal-ai/flux/schnell",
                 {
                     input: {
                         prompt: scene.prompt,

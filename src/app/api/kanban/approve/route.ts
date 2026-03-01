@@ -21,6 +21,12 @@ export async function POST(req: Request) {
                 data: { approved: !!approved }
             });
             return NextResponse.json(updated);
+        } else if (type === 'textPost') {
+            const updated = await prisma.textPost.update({
+                where: { id },
+                data: { approved: !!approved }
+            });
+            return NextResponse.json(updated);
         } else {
             return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
         }

@@ -902,6 +902,18 @@ function ItemDetail({
                             </div>
                             <p className="text-[13px] text-red-600 dark:text-red-300 whitespace-pre-wrap leading-relaxed">{item.nuclear || 'No nuclear option.'}</p>
                         </div>
+                        <div className="bg-white dark:bg-slate-800/20 p-6 rounded-[2rem] border border-white dark:border-slate-800 shadow-sm group md:col-span-2">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Anything Else</h4>
+                                <button
+                                    onClick={() => setEditingPart({ type: 'inquiry', id: item.id, content: item.anythingElse || '', field: 'anythingElse' })}
+                                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                                >
+                                    <Edit3Icon size={14} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <p className="text-[13px] text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{item.anythingElse || 'Nothing additional provided.'}</p>
+                        </div>
                     </div>
                 </div>
 
@@ -957,9 +969,29 @@ function ItemDetail({
                 {/* Narrative Text Posts */}
                 {item.textPosts && item.textPosts.length > 0 && (
                     <div className="space-y-6">
-                        <div className="flex items-center gap-3 px-2">
-                            <Share2Icon className="text-blue-500" size={20} />
-                            <h3 className="text-sm font-black uppercase tracking-[0.3em] text-slate-400">Narrative Text Posts</h3>
+                        <div className="flex items-center justify-between px-2">
+                            <div className="flex items-center gap-3">
+                                <Share2Icon className="text-blue-500" size={20} />
+                                <h3 className="text-sm font-black uppercase tracking-[0.3em] text-slate-400">Narrative Text Posts</h3>
+                            </div>
+                            {item.textPosts.some((p: any) => !p.approved) && (
+                                <button
+                                    onClick={async () => {
+                                        await Promise.all(item.textPosts.filter((p: any) => !p.approved).map((p: any) =>
+                                            fetch('/api/kanban/approve', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ id: p.id, type: 'textPost', approved: true }),
+                                            })
+                                        ));
+                                        onRefresh();
+                                    }}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all"
+                                >
+                                    <CheckCircleIcon size={12} />
+                                    Approve All
+                                </button>
+                            )}
                         </div>
                         <div className="grid grid-cols-1 gap-4">
                             {item.textPosts.sort((a: any, b: any) => a.index - b.index).map((post: any) => (
@@ -973,7 +1005,7 @@ function ItemDetail({
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button
-                                                onClick={() => setEditingPart({ type: 'inquiry', id: post.id, content: post.content, field: 'content' })} // Note: this route might need adjustment but usually we can genericise
+                                                onClick={() => setEditingPart({ type: 'textPost', id: post.id, content: post.content, field: 'content' })}
                                                 className="p-2 opacity-0 group-hover:opacity-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
                                             >
                                                 <Edit3Icon size={14} className="text-slate-400" />
@@ -1112,7 +1144,7 @@ function ItemDetail({
                                             className={`w-full bg-black shadow-inner ${(aspectRatios[script.id] || script.aspectRatio) === '9:16' ? 'aspect-[9/16]' : (aspectRatios[script.id] || script.aspectRatio) === '16:9' ? 'aspect-video' : 'aspect-square'}`}
                                             poster={script.scenes?.[0]?.assetUrl}
                                         >
-                                            <source src={script.assets?.find((a: any) => a.kind === 'VIDEO')?.signedUrl || script.videoUrl} type="video/mp4" />
+                                            <source src={(script.assets?.find((a: any) => a.kind === 'VIDEO' && a.fileName?.startsWith('UA_VIDEO_')) || script.assets?.find((a: any) => a.kind === 'VIDEO'))?.signedUrl || script.videoUrl} type="video/mp4" />
                                             Your browser does not support the video tag.
                                         </video>
                                         <div className="absolute top-4 left-4 pointer-events-none">
@@ -1214,7 +1246,17 @@ function ItemDetail({
                                                     </div>
                                                     {scene.assetUrl && (
                                                         <div className="mt-2 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 group/asset relative">
-                                                            <img src={scene.assetUrl} alt={`Scene ${scene.index}`} className="w-full h-auto" />
+                                                            {scene.type === 'VIDEO' ? (
+                                                                <video
+                                                                    src={scene.assetUrl}
+                                                                    className="w-full h-auto"
+                                                                    controls
+                                                                    muted
+                                                                    playsInline
+                                                                />
+                                                            ) : (
+                                                                <img src={scene.assetUrl} alt={`Scene ${scene.index}`} className="w-full h-auto" />
+                                                            )}
                                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/asset:opacity-100 transition-opacity flex items-center justify-center">
                                                                 <a href={scene.assetUrl} target="_blank" className="p-2 bg-white rounded-full text-black hover:scale-110 transition-all">
                                                                     <ExternalLinkIcon size={16} />
@@ -1386,8 +1428,23 @@ function KanbanCard({ item, onClick, onDelete, onMove, draggable, onDragEnd }: {
                                 {scenesWithAssets.length > 0 && (
                                     <div className="flex gap-1 overflow-hidden rounded-xl h-10 border border-slate-200 dark:border-slate-700">
                                         {scenesWithAssets.slice(0, 5).map((sc: any) => (
-                                            <div key={sc.id} className="h-full aspect-square bg-slate-200 dark:bg-slate-800 shrink-0">
-                                                <img src={sc.assetUrl} alt="" className="w-full h-full object-cover" />
+                                            <div key={sc.id} className="h-full aspect-square bg-slate-200 dark:bg-slate-800 shrink-0 relative overflow-hidden">
+                                                {sc.type === 'VIDEO' ? (
+                                                    <>
+                                                        <video
+                                                            src={sc.assetUrl}
+                                                            className="w-full h-full object-cover opacity-70"
+                                                            muted
+                                                            loop
+                                                            playsInline
+                                                        />
+                                                        <div className="absolute inset-0 flex items-center justify-center">
+                                                            <VideoIcon className="w-3 h-3 text-emerald-400 drop-shadow" />
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <img src={sc.assetUrl} alt="" className="w-full h-full object-cover" />
+                                                )}
                                             </div>
                                         ))}
                                         {scenesWithAssets.length > 5 && (

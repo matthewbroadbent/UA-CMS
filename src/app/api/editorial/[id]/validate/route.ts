@@ -6,7 +6,7 @@ import fs from 'fs';
 function debugLog(msg: string) {
     const time = new Date().toISOString();
     try {
-        fs.appendFileSync('debug.log', `[${time}] ${msg}\n`);
+        fs.appendFileSync('/tmp/debug.log', `[${time}] ${msg}\n`);
     } catch (e) {
         console.error('Failed to write to debug.log', e);
     }
@@ -14,7 +14,7 @@ function debugLog(msg: string) {
 
 export async function POST(
     req: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const { id } = await (params as any);

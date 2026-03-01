@@ -36,14 +36,14 @@ export async function generateSpeech(text: string, scriptId: string, weeklyInqui
 
         const sanitizedText = sanitizeTextForTTS(text);
         const audio = await client.textToSpeech.convert(
-            process.env.ELEVENLABS_VOICE_ID || "uesuxleIgmNYCdwNrW9s", // Default UA voice
+            process.env.ELEVENLABS_VOICE_ID || "7ZJdaADoQFRYkRSUhLQt", // Default UA voice
             {
                 text: sanitizedText,
                 modelId: "eleven_monolingual_v1",
             }
         );
 
-        const publicDir = path.join(process.cwd(), "public", "media", "audio");
+        const publicDir = path.join('/tmp', 'audio');
         if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
 
         const fileName = `${scriptId}.mp3`;
@@ -52,7 +52,7 @@ export async function generateSpeech(text: string, scriptId: string, weeklyInqui
 
         // Log to debug.log for budget tracking
         const logLine = `[${new Date().toISOString()}] [ELEVENLABS] Script: ${scriptId} | Characters: ${sanitizedText.length}\n`;
-        fs.appendFileSync('debug.log', logLine);
+        fs.appendFileSync('/tmp/debug.log', logLine);
 
         // Convert ReadableStream to Buffer
         const chunks: any[] = [];
@@ -64,6 +64,7 @@ export async function generateSpeech(text: string, scriptId: string, weeklyInqui
         console.log(`Audio saved: ${filePath}`);
 
         // Upload to Storage (Supabase or Drive)
+        let audioUrl = `/media/audio/${fileName}`;
         try {
             const asset = await StorageService.uploadAndRecord({
                 file: buffer,
@@ -79,11 +80,14 @@ export async function generateSpeech(text: string, scriptId: string, weeklyInqui
                 weeklyInquiryId: weeklyInquiryId
             });
             console.log(`[Storage] Audio uploaded: ${asset.fileName}`);
+            // Use the remote URL so the render pipeline can always find it
+            // (local /tmp files are not shared across serverless invocations)
+            if ((asset as any).publicUrl) audioUrl = (asset as any).publicUrl;
         } catch (err) {
             console.error(`[Storage] Audio upload failed:`, err);
         }
 
-        return `/media/audio/${fileName}`;
+        return audioUrl;
     } catch (error) {
         console.error("ElevenLabs Error:", error);
         throw error;

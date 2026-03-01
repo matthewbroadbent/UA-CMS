@@ -1,10 +1,16 @@
 import ffmpeg from 'fluent-ffmpeg';
+import ffmpegStatic from 'ffmpeg-static';
+import ffprobePath from 'ffprobe-static';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
 import { prisma } from './prisma';
 import { StorageService } from './storage';
 import { getIntelligibleName } from './naming';
+
+// Use bundled FFmpeg binaries (works on Vercel and Docker)
+ffmpeg.setFfmpegPath(ffmpegStatic!);
+ffmpeg.setFfprobePath(ffprobePath.path);
 
 async function downloadFile(url: string, dest: string, retries = 3): Promise<void> {
     for (let i = 0; i < retries; i++) {
@@ -56,7 +62,7 @@ interface RenderOptions {
  * Logs deleted files with timestamps.
  */
 export function cleanupTempFiles(renderId: string) {
-    const tmpDir = path.join(process.cwd(), 'tmp', renderId);
+    const tmpDir = path.join('/tmp', renderId);
 
     if (!fs.existsSync(tmpDir)) {
         console.log(`[${new Date().toISOString()}] [CLEANUP] No temp folder found for render ${renderId}`);
@@ -123,13 +129,17 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
 
     // Use configurable media output directory if provided, otherwise default to public/media
     const mediaBaseDir = process.env.MEDIA_OUTPUT_DIR || path.join('public', 'media');
-    const audioDir = process.env.MEDIA_OUTPUT_DIR ? process.env.MEDIA_OUTPUT_DIR : 'public';
 
-    // Use relative paths to avoid issues with spaces in the absolute project path on macOS
-    const audioPath = path.join(audioDir, script.audioUrl);
+    // Audio files are always written under public/media/audio by generateSpeech,
+    // and script.audioUrl is stored as a relative path like "media/audio/xyz.mp3".
+    // Build a stable relative path for ffmpeg without duplicating "media".
+    const audioPath = path.join(
+        'public',
+        script.audioUrl.startsWith('/') ? script.audioUrl.slice(1) : script.audioUrl
+    );
     const timestamp = Date.now();
     const outputPath = path.join(mediaBaseDir, 'videos', `${outputName || scriptId}_${aspectRatio.replace(':', 'x')}_${timestamp}.mp4`);
-    const tempDir = path.resolve(process.cwd(), 'tmp', scriptId);
+    const tempDir = path.resolve('/tmp', scriptId);
 
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
     const assetsDir = path.join(tempDir, 'assets');
@@ -246,8 +256,7 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
                     '-map [outv]',
                     '-map 1:a',
                     '-pix_fmt yuv420p',
-                    '-r 25',
-                    '-shortest'
+                    '-r 25'
                 ])
                 .on('start', (cmd) => log(`Final merge started: ${cmd}`))
                 .on('progress', (p) => log(`Merging: ${Math.round(p.percent || 0)}% done`))

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { runMediaPipeline } from '@/lib/pipeline';
 
+export const maxDuration = 800; // Vercel Pro: allow up to 800s for media pipeline
+
 export async function POST(req: Request) {
     try {
         const { id, scriptIds } = await req.json();

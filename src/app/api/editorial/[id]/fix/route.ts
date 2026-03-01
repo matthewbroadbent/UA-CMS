@@ -5,7 +5,7 @@ import { validateArticle } from "@/lib/validator";
 
 export async function POST(
     req: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const { id } = await (params as any); // Next.js 15/16 compat

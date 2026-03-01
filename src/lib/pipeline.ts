@@ -6,20 +6,47 @@ import { generateSpeech } from '@/lib/voice';
 import path from 'path';
 import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
+import ffprobePath from 'ffprobe-static';
 import { generateMediaAsset } from './scenes';
 import { renderVideo } from './renderer';
 import { LLMProvider, generateContent, extractJSON } from './providers';
 import { StorageService } from "./storage";
 import { getIntelligibleName } from "./naming";
 import { validateArticle } from './validator';
-import { applyEditorialSanitization } from './editorial';
+import { applyEditorialSanitization, validateUrl } from './editorial';
 
 export function debugLog(msg: string) {
     const time = new Date().toISOString();
     try {
-        fs.appendFileSync('debug.log', `[${time}] ${msg}\n`);
+        fs.appendFileSync('/tmp/debug.log', `[${time}] ${msg}\n`);
     } catch (e) {
         console.error("Failed to write to debug.log", e);
+    }
+}
+
+// Use bundled ffprobe binary (works on Vercel and Docker)
+ffmpeg.setFfprobePath(ffprobePath.path);
+
+/**
+ * Follows a redirect URL and returns the canonical destination.
+ * Falls back gracefully to the original URL if resolution fails or times out.
+ */
+async function resolveRedirectUrl(url: string, timeoutMs = 5000): Promise<string> {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const res = await fetch(url, {
+            method: 'HEAD',
+            redirect: 'follow',
+            signal: controller.signal,
+            headers: { 'User-Agent': 'UA-Editorial-Validator/1.0' }
+        });
+        clearTimeout(timeout);
+        // res.url is the final URL after all redirects have been followed
+        return res.url || url;
+    } catch (e: any) {
+        debugLog(`[Pass A] Could not resolve redirect for ${url}: ${e.message}`);
+        return url;
     }
 }
 
@@ -214,9 +241,17 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
         debugLog(`[Pass B] Designing Strategic Plan for: ${inquiryId}`);
         const plan = await runPassBStrategicPlan(inquiry, researchPack);
 
-        // --- PASS C: LONG-FORM PROSE (Sonnet with Repair) ---
-        debugLog(`[Pass C] Writing Long-form Prose for: ${inquiryId}`);
-        const articleProse = await runPassCWrite(inquiry, researchPack, plan, config);
+        // --- PASS C1: REALITY STORY (Sonnet) ---
+        debugLog(`[Pass C1] Writing Reality story for: ${inquiryId}`);
+        const section1 = await runPassC1StoryPass(inquiry);
+
+        // --- PASS C2: LONG-FORM PROSE (Sonnet) ---
+        debugLog(`[Pass C2] Writing Long-form Prose for: ${inquiryId}`);
+        const articleProse = await runPassC2ProseWrite(inquiry, researchPack, plan, config, section1);
+
+        // --- PASS D: COMPLIANCE PASS (Sonnet) ---
+        debugLog(`[Pass D] Running Compliance Pass for: ${inquiryId}`);
+        const complianceResult = await runPassDCompliancePass(articleProse, plan.text_posts);
 
         // --- ATOMIC TRANSITION: CLEAR OLD DATA JUST BEFORE SAVING NEW ---
         debugLog(`[Pipeline] Content generated successfully. Performing final cleanup of previous artifacts...`);
@@ -237,11 +272,15 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
             }
         });
 
-        // 2. Persist Text Posts
+        // 2. Persist Text Posts (using Pass D compliance-checked content)
         const textPosts = [];
         for (const [idx, post] of plan.text_posts.entries()) {
             const sequence = (idx + 1).toString().padStart(2, '0');
             const uaId = `UA-POST-${inquiry.uaId}-${sequence}`;
+
+            // Use compliance-checked content from Pass D where available
+            const compPost = complianceResult.posts.find((p: any) => p.index === idx + 1);
+            const finalContent = compPost ? compPost.content : post.content;
 
             const saved = await prisma.textPost.create({
                 data: {
@@ -250,7 +289,7 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
                     runId: run.id,
                     index: idx,
                     title: post.title,
-                    content: cleanString(post.content),
+                    content: cleanString(finalContent),
                     researchPackData: JSON.stringify(researchPack),
                     status: 'EDITORIAL'
                 }
@@ -258,7 +297,7 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
 
             // Upload to Storage
             await StorageService.uploadAndRecord({
-                file: Buffer.from(cleanString(post.content), 'utf8'),
+                file: Buffer.from(cleanString(finalContent), 'utf8'),
                 fileName: getIntelligibleName({
                     uaId: inquiry.uaId,
                     type: 'POST',
@@ -273,8 +312,8 @@ export async function runPipeline(inquiryId: string, config: PipelineConfig) {
             textPosts.push(saved);
         }
 
-        // 3. Persist Article
-        const sanitizedOutput = applyEditorialSanitization(articleProse);
+        // 3. Persist Article (rawOutput = Pass C2 prose; draftContent = Pass D compliance-checked)
+        const sanitizedOutput = applyEditorialSanitization(complianceResult.article);
         const validation = validateArticle(sanitizedOutput, { researchPack, spineContract: plan.spine_contract });
 
         const article = await prisma.article.upsert({
@@ -402,6 +441,46 @@ async function runPassAResearchPack(inquiry: any, retryCount = 0, hint = ""): Pr
             return runPassAResearchPack(inquiry, retryCount + 1, robustHint);
         }
 
+        // --- Redirect URL Resolution ---
+        // Resolve any proxy or redirect URLs (e.g. vertexaisearch.cloud.google.com) to their
+        // canonical publisher destinations before the pack is passed to Pass B and Pass C.
+        debugLog(`[Pass A] Resolving redirect URLs in sources...`);
+        for (const source of pack.sources) {
+            if (source.url && !validateUrl(source.url).valid) {
+                const resolved = await resolveRedirectUrl(source.url);
+                if (resolved !== source.url) {
+                    debugLog(`[Pass A] Resolved ${source.id}: ${source.url} → ${resolved}`);
+                    source.url = resolved;
+                }
+                // Fix publisher field if Gemini populated it from a redirect/proxy domain
+                if (source.publisher && /vertexaisearch|googlecloud|googleapis/i.test(source.publisher)) {
+                    try {
+                        const domain = new URL(source.url).hostname.replace(/^www\./, '');
+                        debugLog(`[Pass A] Fixed publisher for ${source.id}: "${source.publisher}" → "${domain}"`);
+                        source.publisher = domain;
+                    } catch {
+                        // Leave publisher unchanged if URL parsing fails
+                    }
+                }
+            }
+        }
+
+        // --- Discard sources with no valid canonical URL after resolution ---
+        const beforeCount = pack.sources.length;
+        pack.sources = pack.sources.filter((s: any) => {
+            const url = s.url || '';
+            const isEmpty = !url.trim();
+            const isRedirect = /vertexaisearch|googlecloud|googleapis/i.test(url);
+            if (isEmpty || isRedirect) {
+                debugLog(`[Pass A] Discarded ${s.id}: no valid canonical URL after resolution.`);
+                return false;
+            }
+            return true;
+        });
+        if (pack.sources.length < beforeCount) {
+            debugLog(`[Pass A] Removed ${beforeCount - pack.sources.length} source(s) with invalid URLs.`);
+        }
+
         // Traceability Check
         const sourceIds = pack.sources.map((s: any) => s.id);
         const allClaims = [...(pack.facts || []), ...(pack.stats || []), ...(pack.regulatory_changes || []), ...(pack.tensions || [])];
@@ -431,6 +510,9 @@ async function runPassBStrategicPlan(inquiry: any, researchPack: any, retryCount
     const prompt = buildPrompt(template, {
         theme: inquiry.theme,
         thinking: inquiry.thinking || "",
+        reality: inquiry.reality || "",
+        rant: inquiry.rant || "",
+        nuclear: inquiry.nuclear || "",
         research_pack: JSON.stringify(researchPack),
         today: today
     });
@@ -451,6 +533,17 @@ async function runPassBStrategicPlan(inquiry: any, researchPack: any, retryCount
             throw new Error(`Strategic Plan failed: Must have exactly 5 spine sections and 7 text posts.`);
         }
 
+        // Coerce chapter_number to a positive integer
+        const rawChapterNum = plan.spine_contract.chapter_number;
+        const parsedChapterNum = parseInt(String(rawChapterNum), 10);
+        if (!isNaN(parsedChapterNum) && parsedChapterNum > 0) {
+            plan.spine_contract.chapter_number = parsedChapterNum;
+        } else {
+            const count = await prisma.weeklyInquiry.count();
+            plan.spine_contract.chapter_number = count;
+            debugLog(`[Pass B] chapter_number coerced: "${rawChapterNum}" → ${count} (inquiry count fallback).`);
+        }
+
         return plan;
     } catch (err: any) {
         debugLog(`[Pass B] Failed: ${err.message}`);
@@ -459,53 +552,293 @@ async function runPassBStrategicPlan(inquiry: any, researchPack: any, retryCount
     }
 }
 
-async function runPassCWrite(inquiry: any, researchPack: any, plan: any, config: PipelineConfig, retryCount = 0, repairAttempt = 0): Promise<string> {
+/**
+ * Programmatically removes exclusion phrases, named brands and framing notes
+ * from the Reality field before it reaches the LLM.
+ * The model cannot reproduce what it never receives.
+ */
+function preprocessRealityField(reality: string): {
+    cleaned: string;
+    foundExclusions: string[];
+    excludedNames: string[];
+    removedFramingNotes: string[];
+} {
+    const EXCLUSION_TRIGGERS = [
+        "i would prefer it if they were not mentioned",
+        "prefer not to name",
+        "prefer not to mention",
+        "do not mention",
+        "i would rather not identify",
+        "i would rather not name",
+        "please do not name",
+        "rather not say"
+    ];
+
+    const FRAMING_TRIGGERS = [
+        "this is probably an extreme example",
+        "this might be an extreme example",
+        "perhaps an extreme example"
+    ];
+
+    const COMMON_WORDS = new Set([
+        // Sentence starters / conjunctions / articles
+        'The', 'And', 'But', 'For', 'With', 'This', 'That', 'They', 'Their',
+        'There', 'Would', 'Could', 'Should', 'Were', 'Have', 'Been', 'When',
+        'What', 'Which', 'Who', 'How', 'Not', 'From', 'Into', 'About', 'Just',
+        'Each', 'Also', 'More', 'Very', 'Rather', 'Please', 'Prefer', 'If',
+        'Like', 'Such', 'Name', 'Mention', 'Want', 'Know', 'Think', 'Some',
+        // Pronouns
+        'I', 'We', 'He', 'She', 'It', 'You', 'Our', 'My', 'His', 'Her',
+        'Having', 'Because', 'Although', 'Although', 'Despite', 'After',
+        'Before', 'During', 'Without', 'Within', 'Between', 'Through',
+        // Countries / regions / nationalities commonly appearing in SME stories
+        'UK', 'US', 'EU', 'China', 'Italy', 'France', 'Germany', 'Spain',
+        'India', 'Japan', 'America', 'Europe', 'Asia', 'Africa', 'London',
+        'British', 'English', 'Scottish', 'Welsh', 'Irish', 'American',
+        'Chinese', 'Italian', 'French', 'German', 'Indian',
+        // Month names
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+        // Season names
+        'Spring', 'Summer', 'Autumn', 'Winter',
+        // Day names
+        'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+        // Job titles (standalone, without a preceding proper name)
+        'Managing', 'Director', 'Manager', 'Partner', 'Chairman', 'Chief',
+        'Officer', 'President', 'Executive', 'Senior', 'Junior', 'Head',
+        'Finance', 'Operations', 'Marketing', 'Sales', 'Legal',
+        // Common adjectives/nouns that start sentences and look like proper nouns
+        'Ladies', 'Fashion', 'Retail', 'Trade', 'Business', 'Company',
+        'Group', 'Limited', 'Trust', 'Fund', 'Bank', 'Capital'
+    ]);
+
+    // Split into sentences on . ! ? followed by whitespace
+    const sentences = reality.split(/(?<=[.!?])\s+/);
+
+    const foundExclusions: string[] = [];
+    const excludedNames: string[] = [];
+    const removedFramingNotes: string[] = [];
+    const exclusionSentences: string[] = [];
+
+    const keptSentences = sentences.filter(sentence => {
+        const lower = sentence.toLowerCase();
+        if (EXCLUSION_TRIGGERS.some(t => lower.includes(t))) {
+            foundExclusions.push(sentence.trim());
+            exclusionSentences.push(sentence);
+            return false;
+        }
+        if (FRAMING_TRIGGERS.some(t => lower.includes(t))) {
+            removedFramingNotes.push(sentence.trim());
+            return false;
+        }
+        return true;
+    });
+
+    // Extract proper nouns from ALL sentences when an exclusion trigger was found.
+    // The trigger sentence often uses an indirect reference ("the above two brands"),
+    // so the actual brand names may appear anywhere in the Reality field.
+    if (foundExclusions.length > 0) {
+        const capPattern = /\b([A-Z][a-zA-Z'&]{1,}(?:\s+[A-Z][a-zA-Z'&]{1,}){0,2})\b/g;
+        for (const sentence of sentences) {
+            let match;
+            capPattern.lastIndex = 0;
+            while ((match = capPattern.exec(sentence)) !== null) {
+                const candidate = match[1].trim();
+                const firstWord = candidate.split(/\s+/)[0];
+                if (COMMON_WORDS.has(firstWord)) continue;
+                // Skip each word in the candidate if any part is a common word
+                const allWords = candidate.split(/\s+/);
+                if (allWords.some(w => COMMON_WORDS.has(w))) continue;
+                // Skip short candidates and short all-caps abbreviations
+                if (candidate.length < 3) continue;
+                if (candidate === candidate.toUpperCase() && candidate.length <= 3) continue;
+                if (!excludedNames.includes(candidate)) {
+                    excludedNames.push(candidate);
+                }
+            }
+        }
+    }
+
+    // Replace excluded names in the remaining text
+    let cleaned = keptSentences.join(' ').trim();
+    for (const name of excludedNames) {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        cleaned = cleaned.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), 'a well-known brand');
+    }
+
+    return { cleaned, foundExclusions, excludedNames, removedFramingNotes };
+}
+
+/**
+ * Pass C1: Reality Story (Claude)
+ * Rewrites the author's Reality field as polished publishable prose.
+ */
+async function runPassC1StoryPass(inquiry: any): Promise<string> {
+    const template = await getActivePrompt('UA_STORY_PASS', PROMPTS.UA_STORY_PASS);
+    debugLog(`[Pass C1] Writing Reality story for: ${inquiry.uaId}`);
+
+    // Pre-process the Reality field programmatically before the LLM sees it
+    const { cleaned, foundExclusions, excludedNames, removedFramingNotes } =
+        preprocessRealityField(inquiry.reality || "");
+
+    debugLog(`[Pass C1] Pre-processed Reality field. Exclusion phrases found: ${foundExclusions.length}. Names excluded: [${excludedNames.join(', ')}]. Framing notes removed: [${removedFramingNotes.map(n => n.substring(0, 60)).join(' | ')}]`);
+
+    const prompt = buildPrompt(template, {
+        reality: cleaned
+    });
+
+    const result = await generateContent('ANTHROPIC', 'claude-3-5-sonnet-latest', prompt, {
+        temperature: 0.4,
+        maxTokens: 2048
+    });
+
+    const story = result.text.trim();
+    const storyWordCount = countWords(story);
+    debugLog(`[Pass C1] Story pass complete, word count: ${storyWordCount}`);
+    if (storyWordCount < 180) {
+        debugLog(`[Pass C1] Warning: story word count ${storyWordCount} below minimum 200. Consider expanding Reality field input.`);
+    }
+    return story;
+}
+
+/**
+ * Pass C2: Long-form Prose (Claude)
+ * Writes sections 2-5 of the article, building on the C1 story.
+ */
+async function runPassC2ProseWrite(inquiry: any, researchPack: any, plan: any, config: PipelineConfig, section1: string, retryCount = 0, repairAttempt = 0): Promise<string> {
     const template = await getActivePrompt('UA_PROSE_WRITE', PROMPTS.UA_PROSE_WRITE);
 
-    // Pass B produces spine_contract
     const promptData: any = {
         chapter_number: plan.spine_contract.chapter_number,
         chapter_title: plan.spine_contract.chapter_title,
-        italic_subtitle: plan.spine_contract.italic_subtitle,
+        theme_subtitle: plan.spine_contract.italic_subtitle,
+        thinking: inquiry.thinking || "",
+        rant: inquiry.rant || "",
+        nuclear: inquiry.nuclear || "",
         research_pack: JSON.stringify(researchPack),
-        article_spine: JSON.stringify(plan.spine_contract)
+        article_spine: JSON.stringify(plan.spine_contract),
+        section_1: section1
     };
 
-    if (plan.spine_contract.spine) {
-        plan.spine_contract.spine.forEach((s: any, idx: number) => {
-            promptData[`h2_${idx + 1}`] = s.title;
-        });
+    // Pass h2_2 through h2_5 — section 1 is handled by Pass C1
+    const spineItems = plan.spine_contract.spine || [];
+    for (let i = 1; i < spineItems.length; i++) {
+        promptData[`h2_${i + 1}`] = spineItems[i].title;
     }
-
-    // Alignment: theme_subtitle vs italic_subtitle
-    promptData.theme_subtitle = plan.spine_contract.italic_subtitle;
 
     const prompt = buildPrompt(template, promptData);
 
-    // Model Selection
-    // Default: Sonnet 3.5
-    // Retry/Repair: Use latest Sonnet version (per user request)
+    // Model selection: default Sonnet 3.5, upgrade on retry/repair
     let model = 'claude-3-5-sonnet-latest';
-    let provider: LLMProvider = 'ANTHROPIC';
+    const provider: LLMProvider = 'ANTHROPIC';
 
     if (retryCount >= 1 || repairAttempt >= 1) {
-        model = 'claude-3-7-sonnet-20250219'; // Robust latest
+        model = 'claude-3-7-sonnet-20250219';
     }
 
-    debugLog(`[Pass C] Writing with ${model}.`);
+    debugLog(`[Pass C2] Writing with ${model}.`);
 
-    let result;
+    const result = await generateContent(provider, model, prompt, {
+        temperature: 0.5,
+        maxTokens: 8192
+    });
+
+    const prose = result.text.trim();
+    debugLog(`[Pass C2] Prose pass complete, word count: ${countWords(prose)}`);
+    return prose;
+}
+
+/**
+ * Pass D: Compliance Check (Claude)
+ * Applies A1-A8 article checks and P1-P6 post checks.
+ * Returns fixed article + posts, with a log of changes made.
+ * Uses delimited text output to avoid JSON escaping failures.
+ * Never throws — always returns something usable.
+ */
+async function runPassDCompliancePass(
+    article: string,
+    textPosts: any[]
+): Promise<{ article: string; posts: Array<{ index: number; content: string }>; changes: string[] }> {
+    const template = await getActivePrompt('UA_COMPLIANCE_PASS', PROMPTS.UA_COMPLIANCE_PASS);
+
+    const formattedPosts = textPosts.map((p: any, idx: number) => ({
+        index: idx + 1,
+        content: p.content
+    }));
+
+    const prompt = buildPrompt(template, {
+        article,
+        posts: formattedPosts.map((p: any) => `---POST_${p.index}_INPUT---\n${p.content}\n---END_POST_${p.index}_INPUT---`).join('\n\n')
+    });
+
+    debugLog(`[Pass D] Running compliance check on article + ${textPosts.length} posts.`);
+
     try {
-        result = await generateContent(provider, model, prompt, {
-            temperature: 0.5,
+        const result = await generateContent('ANTHROPIC', 'claude-3-5-sonnet-latest', prompt, {
+            temperature: 0.1,
             maxTokens: 8192
         });
-    } catch (err: any) {
-        throw err;
-    }
 
-    let prose = result.text.trim();
-    return prose;
+        const raw = result.text;
+        const lines = raw.split('\n');
+
+        // Extracts content between an exact opening delimiter line and its closing delimiter
+        function extractBlock(openDelimiter: string, closeDelimiter: string): string | null {
+            const startIdx = lines.findIndex(l => l.trim() === openDelimiter);
+            if (startIdx === -1) return null;
+            const endIdx = lines.findIndex((l, i) => i > startIdx && l.trim() === closeDelimiter);
+            if (endIdx === -1) return null;
+            return lines.slice(startIdx + 1, endIdx).join('\n');
+        }
+
+        // Extract article
+        const parsedArticle = extractBlock('---ARTICLE---', '---END_ARTICLE---');
+        if (parsedArticle === null) {
+            debugLog('[Pass D] Warning: ---ARTICLE--- delimiter missing, using Pass C2 output unchanged.');
+        }
+        const finalArticle = parsedArticle !== null ? parsedArticle.trim() : article;
+
+        // Extract posts 1-7
+        const posts: Array<{ index: number; content: string }> = [];
+        for (let i = 1; i <= 7; i++) {
+            const parsedPost = extractBlock(`---POST_${i}---`, `---END_POST_${i}---`);
+            if (parsedPost !== null) {
+                posts.push({ index: i, content: parsedPost.trim() });
+            } else {
+                debugLog(`[Pass D] Warning: ---POST_${i}--- delimiter missing, using original post unchanged.`);
+                const original = formattedPosts.find((p: any) => p.index === i);
+                posts.push({ index: i, content: original ? original.content : '' });
+            }
+        }
+
+        // Extract changes
+        const changesBlock = extractBlock('---CHANGES---', '---END_CHANGES---');
+        let changes: string[] = [];
+        if (changesBlock !== null) {
+            changes = changesBlock
+                .split('\n')
+                .map(l => l.trim())
+                .filter(l => l.startsWith('- '))
+                .map(l => l.slice(2).trim())
+                .filter(l => l.length > 0);
+            if (changes.length === 0) changes = ['No changes required'];
+        } else {
+            changes = ['Parse warning: changes section missing'];
+        }
+
+        changes.forEach(c => debugLog(`[Pass D] Fix: ${c}`));
+        debugLog(`[Pass D] Compliance pass complete, ${changes.length} fix(es) applied.`);
+
+        return { article: finalArticle, posts, changes };
+
+    } catch (err: any) {
+        debugLog(`[Pass D] Failed: ${err.message}. Returning Pass C2 outputs unchanged.`);
+        return {
+            article,
+            posts: formattedPosts,
+            changes: ['Pass D failure — original outputs returned unchanged.']
+        };
+    }
 }
 
 
@@ -542,16 +875,26 @@ function cleanString(text: string): string {
 async function validateTier3(scriptId: string, audioUrl: string): Promise<{ valid: boolean; errors: string[]; duration: number }> {
     const errors: string[] = [];
     let duration = 0;
-    const fullPath = path.join(process.cwd(), 'public', audioUrl);
 
-    if (!fs.existsSync(fullPath)) {
-        errors.push("Audio file not found on disk.");
-        return { valid: false, errors, duration: 0 };
-    }
+    // For remote URLs (Supabase), ffprobe can probe directly over HTTPS.
+    // For local paths, check /tmp/audio first (serverless), then public/.
+    let fullPath: string;
+    if (audioUrl.startsWith('http')) {
+        fullPath = audioUrl;
+    } else {
+        const tmpPath = path.join('/tmp', 'audio', `${scriptId}.mp3`);
+        const publicPath = path.join(process.cwd(), 'public', audioUrl.startsWith('/') ? audioUrl.slice(1) : audioUrl);
+        fullPath = fs.existsSync(tmpPath) ? tmpPath : publicPath;
 
-    const stats = fs.statSync(fullPath);
-    if (stats.size < 1000) {
-        errors.push("Audio file is too small (possible generation failure).");
+        if (!fs.existsSync(fullPath)) {
+            errors.push("Audio file not found on disk.");
+            return { valid: false, errors, duration: 0 };
+        }
+
+        const stats = fs.statSync(fullPath);
+        if (stats.size < 1000) {
+            errors.push("Audio file is too small (possible generation failure).");
+        }
     }
 
     try {
@@ -576,7 +919,7 @@ async function validateTier3(scriptId: string, audioUrl: string): Promise<{ vali
 export async function runVoicePipeline(inquiryId: string, options?: { autoApprove?: boolean }) {
     const log = (msg: string) => {
         const line = `[${new Date().toISOString()}] [VOICE] ${msg}\n`;
-        fs.appendFileSync('debug.log', line);
+        fs.appendFileSync('/tmp/debug.log', line);
         console.log(`[VOICE] ${msg}`);
     };
 
@@ -637,7 +980,7 @@ export async function runVoicePipeline(inquiryId: string, options?: { autoApprov
 export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: string[] | null, options?: { autoApprove?: boolean }) {
     const log = (msg: string) => {
         const line = `[${new Date().toISOString()}] ${msg}\n`;
-        fs.appendFileSync('scribing.log', line);
+        fs.appendFileSync('/tmp/scribing.log', line);
         console.log(msg);
     };
 
@@ -842,7 +1185,7 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
 export async function runRenderPipeline(scriptId: string, aspectRatio?: string) {
     const log = (msg: string) => {
         const line = `[${new Date().toISOString()}] [RENDER] ${msg}\n`;
-        fs.appendFileSync('scribing.log', line);
+        fs.appendFileSync('/tmp/scribing.log', line);
         console.log(`[RENDER] ${msg}`);
     };
 
@@ -867,21 +1210,36 @@ export async function runRenderPipeline(scriptId: string, aspectRatio?: string) 
         // Update status to RENDERING now that we have the object in memory
         await prisma.$executeRaw`UPDATE "VideoScript" SET "status" = 'RENDERING' WHERE "id" = ${scriptId}`;
 
-        // 1. Ensure Voice is Generated
-        if (!script.audioUrl) {
-            log(`Generating voiceover for script ${scriptId}...`);
-            const fullText = [script.hook, script.script, script.closingLine].filter(Boolean).join('\n\n');
+        // 1. Ensure Voice is Generated and audio is accessible
+        // audioUrl may be a Supabase https URL or a local relative path
+        const resolveAudioPath = (url: string) =>
+            url.startsWith('http') ? url : path.join(process.cwd(), 'public', url);
+
+        let audioPath = script.audioUrl ? resolveAudioPath(script.audioUrl) : '';
+
+        const audioMissing = !script.audioUrl ||
+            (!script.audioUrl.startsWith('http') && !fs.existsSync(audioPath));
+
+        if (audioMissing) {
+            log(
+                !script.audioUrl
+                    ? `Generating voiceover for script ${scriptId} (no existing audioUrl)...`
+                    : `Regenerating voiceover for script ${scriptId} (missing audio file on disk)...`
+            );
+            const fullText = [script.hook, script.script, script.closingLine]
+                .filter(Boolean)
+                .join('\n\n');
             const audioUrl = await generateSpeech(fullText, scriptId, script.weeklyInquiryId);
             await (prisma as any).videoScript.update({
                 where: { id: scriptId },
                 data: { audioUrl }
             });
             script.audioUrl = audioUrl;
+            audioPath = resolveAudioPath(audioUrl);
             log(`Voiceover complete: ${audioUrl}`);
         }
 
         // 2. Dynamic Duration Rescaling (SYNC FIX)
-        const audioPath = path.join(process.cwd(), 'public', script.audioUrl!);
         log(`Measuring audio duration for ${audioPath}...`);
 
         const audioDuration: number = await new Promise((resolve, reject) => {
@@ -912,19 +1270,23 @@ export async function runRenderPipeline(scriptId: string, aspectRatio?: string) 
             include: { scenes: { orderBy: { index: 'asc' } } }
         });
 
-        // 3. Ensure all scene Assets are Generated (PARALLEL)
+        // 3. Ensure all scene Assets are Generated (BATCHED to respect fal.ai 10-request limit)
         log(`Checking assets for ${updatedScript!.scenes.length} scenes...`);
-        const assetTasks = updatedScript!.scenes.map(async (scene) => {
+        const missingScenes = updatedScript!.scenes.filter(scene => {
             if (!scene.assetUrl) {
-                log(`Queuing parallel generation for scene ${scene.index} (${scene.type})...`);
-                return generateMediaAsset(scene.id);
-            } else {
-                log(`Skipping asset generation for scene ${scene.index} (Asset already exists)`);
-                return scene.assetUrl;
+                log(`Queuing generation for scene ${scene.index} (${scene.type})...`);
+                return true;
             }
+            log(`Skipping asset generation for scene ${scene.index} (Asset already exists)`);
+            return false;
         });
 
-        await Promise.all(assetTasks);
+        // Process in batches of 3 to avoid hitting fal.ai's 10 concurrent request limit
+        const FAL_BATCH_SIZE = 3;
+        for (let i = 0; i < missingScenes.length; i += FAL_BATCH_SIZE) {
+            const batch = missingScenes.slice(i, i + FAL_BATCH_SIZE);
+            await Promise.all(batch.map(scene => generateMediaAsset(scene.id)));
+        }
 
         // 4. Final Render
         log(`Executing FFmpeg render...`);

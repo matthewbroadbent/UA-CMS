@@ -5,6 +5,10 @@ import { StorageService } from '@/lib/storage';
 export async function GET() {
     try {
         const items = await (prisma as any).weeklyInquiry.findMany({
+            // Note: relationLoadStrategy: 'join' is disabled for now
+            // because the current Prisma runtime rejects it as an
+            // unknown argument. The includes below already ensure
+            // Prisma batches relation queries efficiently.
             include: {
                 article: {
                     include: {

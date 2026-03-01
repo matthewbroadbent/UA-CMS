@@ -11,6 +11,12 @@ export async function POST(req: Request) {
                 where: { id },
                 data: { draftContent: content }
             });
+        } else if (type === 'textPost') {
+            const updateField = field || 'content';
+            await prisma.textPost.update({
+                where: { id },
+                data: { [updateField]: content }
+            });
         } else if (type === 'script') {
             if (typeof content === 'object' && content !== null) {
                 // Batch update (handled by ScriptEditor)

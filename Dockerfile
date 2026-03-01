@@ -2,7 +2,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies for FFmpeg and Node.js
+# Install system FFmpeg (with font support for ASS subtitle rendering) and build tools
 RUN apk add --no-cache \
     ffmpeg \
     bash \
@@ -18,12 +18,12 @@ RUN npm install
 
 COPY . .
 
-# Generate Prisma Client
-RUN npx prisma generate
+# Build the Next.js app for production (also runs prisma generate)
+RUN npm run build
 
 # Create directory for media assets
 RUN mkdir -p public/media
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma generate && npm run dev"]
+CMD ["npm", "start"]
