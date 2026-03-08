@@ -1330,26 +1330,33 @@ The duration field is fixed. shortInsight must always output "30s". expandedInsi
 Both scripts must share the same coreObservation value.
 
 ════════════════════════════════
-STEP 1 — EXTRACT THE STRONGEST OBSERVATION
+STEP 1 — OBSERVATION SELECTION GATE (CRITICAL)
 ════════════════════════════════
-Before writing either script, read the article and extract 5 candidate observations.
+Before writing either script:
 
-A strong observation must be:
-- Behavioural: describes something founders, buyers, investors, or deals actually do
-- Contestable: someone could reasonably disagree with it
-- Reusable: strong enough to stand alone outside the article
-- Compressible: can be expressed clearly in one sentence
-- Scroll-stopping: likely to make a founder pause mid-scroll
+1. Generate seven candidate observations derived from the article.
 
-Reject weak observations. They are weak if they are:
-- Summary statements or article recaps
-- Generic trend claims
-- Predictable conclusions
-- Topic introductions
+Each observation must describe a repeated behavioural pattern in founders, buyers, investors, or deals.
+Weak observations describe ideas. Strong observations describe behaviour.
+Weak: "Investors want credible financial models."
+Strong: "Investors read the assumptions before they read the numbers."
 
-Select the single strongest observation.
+2. Stress test each candidate using these five filters:
+
+BANALITY TEST: If the statement could appear in a generic consultancy blog, reject it.
+
+ROOM TEST: Would an experienced investor recognise this pattern from real meetings? If not, reject it.
+
+CONTRARIAN TEST: Does the observation challenge a common founder belief? If not, downgrade it.
+
+COMPRESSION TEST: Can the observation be expressed clearly in one sentence under fifteen words? If not, rewrite it.
+
+RECOGNITION TEST: Would a founder pause and think "that might be me"? If not, reject it.
+
+3. Select the strongest surviving observation.
 This becomes the spine of both scripts.
-Do not output the candidate list. Proceed silently.
+Do not output the rejected observations.
+Proceed silently using the strongest observation.
 
 ════════════════════════════════
 STEP 2 — WRITE THE SCRIPTS
@@ -1374,11 +1381,12 @@ BEAT RULES (NON-NEGOTIABLE):
   "This highlights the importance of" / "It is important to understand" /
   "Investors want to know" / "Founders need to"
 - Replace every such line with a direct observation
-- NO QUESTION OPENINGS (NON-NEGOTIABLE): The hook must never be a question.
-  Questions weaken authority and make the script sound like advertising copy.
-  The hook must be a statement, an observed behaviour, a scene, or a repeated pattern.
-  Unacceptable: "Building a hockey stick forecast?" / "Do investors really read your model?"
-  Acceptable: "Most hockey-stick forecasts are dismissed immediately." / "Investors read the assumptions before they read the numbers."
+- HOOK STRUCTURE (MANDATORY): The first line must be a declarative observation.
+  The hook must describe a repeated pattern investors or founders exhibit.
+  It must NOT be a question, a second-person accusation, or a marketing hook.
+  Disallowed: questions ("Are investors ignoring your model?") / second-person ("Your forecast is killing the deal.") / marketing ("Want investors to take you seriously?")
+  Allowed: "Most founders assume the pitch decides the deal." / "Investors read the assumptions before they read the numbers." / "Hockey-stick forecasts are usually dismissed immediately."
+  If the hook is a question, rewrite it as a declarative observation before returning output.
 - NO SLOGAN STRUCTURES: Avoid constructions that read like marketing copy.
   Especially avoid paired opposites:
   "X sells this. Y buys that." / "X is not Y. It is Z." / "Capital is scarce. Credibility is scarcer."
@@ -1386,6 +1394,18 @@ BEAT RULES (NON-NEGOTIABLE):
   Prefer grounded observations and behavioural descriptions over compressed rhetorical pairs.
   WEAK: "Founders sell potential. Investors buy reality."
   BETTER: "Founders often talk about what the business could become. Investors start with what is true now."
+
+BEAT PROGRESSION (CRITICAL):
+Each line must move the observation forward.
+Do not stack multiple descriptive lines about the same idea.
+Weak (bunched): "Revenue projections soar after year two. Margins improve as scale appears. Debt becomes serviceable." — one idea repeated three times.
+Better (progressing): "Year one looks cautious. Year two suddenly doubles. Year three explodes. Investors stop listening." — each line is a new beat.
+If two adjacent lines describe the same idea, merge them into one or replace the second with the next narrative step.
+
+SCENE ANCHOR:
+Within the first three beats, include a recognisable moment or action.
+Examples: "You send the model." / "The investor opens the spreadsheet." / "They scroll straight to the assumptions."
+Scenes create recognition. Explanations create distance.
 
 VOICE:
 - A seasoned operator
@@ -1450,6 +1470,9 @@ If a URL is ever referenced, it must be norivane.co.uk — never norivane.com.
 norivane.com is the main consultancy site. norivane.co.uk is the Saleability Diagnostic.
 These are different products. Do not conflate them.
 
+The closingLine must appear only in the closingLine field.
+Do not repeat it inside the script body.
+
 ════════════════════════════════
 DURATION DISCIPLINE (CRITICAL)
 ════════════════════════════════
@@ -1480,6 +1503,8 @@ Test each script before returning:
    - contains repeated slogan-style or paired-opposite lines
    - reads like a motivational speech or marketing copy
    Scripts must sound like a calm operator describing a pattern they have seen many times.
+7. Beat progression check: Read the script aloud.
+   If two adjacent lines describe the same idea instead of advancing the scene, rewrite them into a single beat or introduce a new narrative beat.
 
 ════════════════════════════════
 ARTICLE (SOURCE MATERIAL)
