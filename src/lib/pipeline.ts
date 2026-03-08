@@ -876,11 +876,18 @@ async function validateTier3(scriptId: string, audioUrl: string): Promise<{ vali
     const errors: string[] = [];
     let duration = 0;
 
-    // For remote URLs (Supabase), ffprobe can probe directly over HTTPS.
+    // For remote URLs (Supabase), download to /tmp first — ffprobe cannot resolve
+    // external hostnames inside the Docker container network.
     // For local paths, check /tmp/audio first (serverless), then public/.
     let fullPath: string;
     if (audioUrl.startsWith('http')) {
-        fullPath = audioUrl;
+        const localProbe = path.join('/tmp', `${scriptId}_tier3.mp3`);
+        const res = await fetch(audioUrl);
+        if (!res.ok) {
+            return { valid: false, errors: [`Failed to download audio for validation: ${res.status}`], duration: 0 };
+        }
+        fs.writeFileSync(localProbe, Buffer.from(await res.arrayBuffer()));
+        fullPath = localProbe;
     } else {
         const tmpPath = path.join('/tmp', 'audio', `${scriptId}.mp3`);
         const publicPath = path.join(process.cwd(), 'public', audioUrl.startsWith('/') ? audioUrl.slice(1) : audioUrl);
