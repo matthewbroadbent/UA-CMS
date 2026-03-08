@@ -1097,7 +1097,7 @@ function ItemDetail({
                                                 </button>
                                             ))}
                                         </div>
-                                        {(script.audioUrl || script.status === 'MEDIA_GENERATED' || script.status === 'VOICE_GENERATED' || script.status === 'RENDERED') && (
+                                        {script.audioUrl && (
                                             <button
                                                 onClick={() => handleRender(script.id)}
                                                 disabled={isRendering[script.id] || script.status === 'RENDERING'}
@@ -1107,7 +1107,7 @@ function ItemDetail({
                                                 {isRendering[`${script.id}_success`] ? 'Sent ✓' : (isRendering[script.id] || script.status === 'RENDERING' ? 'Rendering...' : 'Render Master')}
                                             </button>
                                         )}
-                                        {!script.audioUrl && !['MEDIA_GENERATED', 'VOICE_GENERATED', 'RENDERED', 'RENDERING'].includes(script.status) && script.approved && (
+                                        {!script.audioUrl && script.approved && (
                                             <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 text-[9px] font-black uppercase tracking-widest rounded-lg border border-indigo-100 dark:border-indigo-800 flex items-center gap-2">
                                                 <RefreshCwIcon size={10} className="animate-spin" /> {(isProcessing && (item.status === 'VOICE' || item.status === 'MEDIA')) ? 'Processing...' : 'Queued for Voice'}
                                             </div>

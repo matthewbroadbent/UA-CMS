@@ -132,8 +132,13 @@ export async function POST(req: Request) {
             }
 
             try {
-                await runVoicePipeline(id, { autoApprove: true });
-                debugLog(`[VOICE] Voice Pipeline complete.`);
+                const voiceResults = await runVoicePipeline(id, { autoApprove: true });
+                const failedScripts = voiceResults.filter((r: any) => r.status === 'FAILED');
+                if (failedScripts.length > 0) {
+                    const errors = failedScripts.map((r: any) => r.error || 'Unknown error').join('; ');
+                    throw new Error(`Voice generation failed for ${failedScripts.length}/${voiceResults.length} script(s): ${errors}`);
+                }
+                debugLog(`[VOICE] Voice Pipeline complete. ${voiceResults.length} script(s) voiced.`);
             } catch (voiceErr: any) {
                 debugLog(`[VOICE] VOICE PIPELINE FAILURE: ${voiceErr.message}`);
                 console.error(`[STAGE_MOVE] [VOICE] VOICE PIPELINE FAILURE:`, voiceErr);
