@@ -947,7 +947,13 @@ export async function runVoicePipeline(inquiryId: string, options?: { autoApprov
             continue;
         }
 
-        const text = [script.hook, script.script, script.closingLine].filter(Boolean).join('\n\n');
+        // Strip hook duplication: hook is a standalone beat, script body must not repeat it.
+        const hookText = script.hook?.trim() ?? '';
+        const scriptBody = script.script?.trimStart() ?? '';
+        const dedupedScript = hookText && scriptBody.startsWith(hookText)
+            ? scriptBody.slice(hookText.length).trimStart()
+            : scriptBody;
+        const text = [script.hook, dedupedScript, script.closingLine].filter(Boolean).join('\n\n');
 
         try {
             log(`Generating audio for ${script.durationType} script...`);

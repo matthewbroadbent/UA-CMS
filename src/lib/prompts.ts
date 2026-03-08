@@ -1494,6 +1494,7 @@ BEAT RULES (NON-NEGOTIABLE):
   Disallowed: questions ("Are investors ignoring your model?") / second-person ("Your forecast is killing the deal.") / marketing ("Want investors to take you seriously?")
   Allowed: "Most founders assume the pitch decides the deal." / "Investors read the assumptions before they read the numbers." / "Hockey-stick forecasts are usually dismissed immediately."
   If the hook is a question, rewrite it as a declarative observation before returning output.
+- HOOK/SCRIPT SEPARATION (NON-NEGOTIABLE): The hook is a standalone field. The script body must NEVER begin with the same sentence as the hook. The hook is read first, then the script continues from the next beat. If the first sentence of the script matches the hook, remove it and begin from the second beat. Duplication here causes the hook to be spoken twice in the audio.
 - NO SLOGAN STRUCTURES: Avoid constructions that read like marketing copy.
   Especially avoid paired opposites:
   "X sells this. Y buys that." / "X is not Y. It is Z." / "Capital is scarce. Credibility is scarcer."
