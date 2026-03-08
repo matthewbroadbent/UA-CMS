@@ -30,6 +30,13 @@ import StageEditor from '../editor/StageEditor';
 import ScriptEditor from '../editor/ScriptEditor';
 import EditorialDesk from './EditorialDesk';
 
+// Sort scripts: shortInsight first, expandedInsight second, legacy by numeric duration.
+function scriptSortOrder(s: any): number {
+    if (s.durationType === 'shortInsight') return 30;
+    if (s.durationType === 'expandedInsight') return 60;
+    return parseInt(s.durationType) || 999;
+}
+
 const STAGES = [
     { id: 'PENDING', name: 'Ideation', color: 'bg-slate-500', lightColor: 'bg-slate-50', darkColor: 'dark:bg-slate-900/30', accent: 'border-slate-200' },
     { id: 'EDITORIAL', name: 'Editorial', color: 'bg-blue-500', lightColor: 'bg-blue-50/50', darkColor: 'dark:bg-blue-900/10', accent: 'border-blue-100' },
@@ -523,7 +530,7 @@ function ItemDetail({
         item.scripts ? Object.fromEntries(item.scripts.map((s: any) => [s.id, s.aspectRatio || "1:1"])) : {}
     );
     const [selectedScripts, setSelectedScripts] = useState<string[]>(
-        item.scripts ? item.scripts.filter((s: any) => ['30s', '60s', 'shortInsight', 'expandedInsight'].includes(s.durationType)).map((s: any) => s.id) : []
+        item.scripts ? [...item.scripts].sort((a: any, b: any) => scriptSortOrder(a) - scriptSortOrder(b)).map((s: any) => s.id) : []
     );
 
     const toggleScriptSelection = (id: string) => {
@@ -760,7 +767,7 @@ function ItemDetail({
                                 </button>
                             </div>
                             <div className="flex flex-wrap gap-3">
-                                {item.scripts?.map((s: any) => (
+                                {[...(item.scripts || [])].sort((a: any, b: any) => scriptSortOrder(a) - scriptSortOrder(b)).map((s: any) => (
                                     <button
                                         key={s.id}
                                         onClick={() => toggleScriptSelection(s.id)}
@@ -1069,7 +1076,7 @@ function ItemDetail({
                             <VideoIcon className="text-emerald-500" size={20} />
                             <h3 className="text-sm font-black uppercase tracking-[0.3em] text-slate-400">Cinematic Scripts</h3>
                         </div>
-                        {item.scripts.map((script: any) => (
+                        {[...item.scripts].sort((a: any, b: any) => scriptSortOrder(a) - scriptSortOrder(b)).map((script: any) => (
                             <div key={script.id} className={`p-8 rounded-[2.5rem] border-2 transition-all duration-500 ${script.approved ? 'border-emerald-500 bg-emerald-50/20 dark:bg-emerald-900/10 shadow-emerald-100 dark:shadow-none shadow-2xl' : 'border-white dark:border-slate-800 bg-white dark:bg-slate-800/40 shadow-xl shadow-black-[0.03]'}`}>
                                 <div className="flex items-center justify-between mb-8">
                                     <div className="flex items-center gap-3">
