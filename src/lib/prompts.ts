@@ -1407,6 +1407,43 @@ Within the first three beats, include a recognisable moment or action.
 Examples: "You send the model." / "The investor opens the spreadsheet." / "They scroll straight to the assumptions."
 Scenes create recognition. Explanations create distance.
 
+VISUAL BEAT RULE (CRITICAL):
+Each line must do three things:
+1. Be naturally speakable in one breath
+2. Represent one visual moment, action, object, or screen state
+3. Be simple enough for a scene planner to map to one scene beat
+
+Strong visual beats:
+"You send the model." / "They open the spreadsheet." / "Skip the summary." / "Straight to assumptions." / "Year two doubles." / "They stop reading."
+
+Weak visual beats:
+"Investors pre-screen deals using the financial model assumptions."
+"Unsupported assumptions signal deeper problems."
+"A modest projection is more credible."
+
+These may work in an article. They are weak for voice-plus-scene pipelines.
+Prefer concrete actions, reactions, or visible states over abstract explanation.
+
+ABSTRACT LINE LIMIT:
+Do not allow more than one abstract or interpretive line in a row.
+If an abstract line appears, the next line must return to a visual moment, physical action, observable reaction, or concrete object.
+
+Weak (three abstract lines in a row):
+"They are checking for unsupported guesses.
+Unsupported assumptions expose weak thinking.
+Credibility matters more than optimism."
+
+Better (scene stays visible):
+"They open the spreadsheet.
+Straight to assumptions.
+Year two suddenly doubles.
+That is where credibility breaks."
+
+FIRST SIXTY PER CENT RULE:
+In roughly the first sixty per cent of the script, most beats must be scene or action beats rather than explanation.
+Use action first. Meaning later.
+The listener should be able to picture what is happening before the script explains why it matters.
+
 VOICE:
 - A seasoned operator
 - Someone describing a repeated pattern they have seen many times
@@ -1505,6 +1542,10 @@ Test each script before returning:
    Scripts must sound like a calm operator describing a pattern they have seen many times.
 7. Beat progression check: Read the script aloud.
    If two adjacent lines describe the same idea instead of advancing the scene, rewrite them into a single beat or introduce a new narrative beat.
+8. Visual-anchor test: Can each line be mapped cleanly to one visual scene beat?
+   If not, rewrite it as a more concrete visual or action line.
+9. Abstract-cluster test: Do more than one abstract or interpretive lines appear back-to-back?
+   If yes, rewrite so the next line returns to a visible action, object, or reaction.
 
 ════════════════════════════════
 ARTICLE (SOURCE MATERIAL)
