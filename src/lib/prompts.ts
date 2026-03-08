@@ -364,6 +364,11 @@ VOICE & LINGUISTIC CONSTRAINTS (NON-NEGOTIABLE)
   is the surprising part of the point — and even then, question it.
   Across the seven posts, statistics should appear in no more than two
   posts unless the Theme itself is explicitly data-driven.
+  Posts 1 to 5 should almost always be observation-led with no statistics.
+  If you have used statistics in more than two posts, identify the weakest
+  uses — where the statistic adds least to the observation — and remove
+  them before returning output. Rewrite those posts around observation only.
+  At least 5 of the 7 posts must contain no statistics at all.
 
   BAN REPORT-OPENERS IN POSTS:
   Treat these as failures unless the post is explicitly about a named
@@ -656,14 +661,20 @@ has an observation-led opening:
 - "Recent studies show..."
 - "Industry data indicates..."
 
-EVIDENCE CAP:
-The article must still read as experience-led if all citations were
-stripped out. Evidence should appear occasionally, not repeatedly.
-Do not let research dominate any section.
+EVIDENCE CAP — HARD LIMITS:
+Statistics must be rare. Apply these limits before writing:
+- No more than 2 to 3 statistics across the entire article.
+- No section may contain more than 1 statistic.
+- Most sections should contain none.
+If a section contains multiple statistics, keep only the strongest.
+Remove the rest. Rewrite the paragraph so the observation still carries
+the meaning without the removed numbers.
+Named market facts and regulatory changes may still be used when genuinely
+necessary, but should remain sparse.
 The article must meet the citation floor, but citations should support
-observations rather than generate them. If necessary, group evidence
-into fewer, stronger paragraphs rather than scattering statistics
-throughout the article.
+observations rather than generate them. Group evidence into fewer,
+stronger paragraphs rather than scattering statistics throughout.
+The article must read as experience-led if all statistics were removed.
 
 BEHAVIOURAL OBSERVATION RULE (2A — CRITICAL):
 Each section must be anchored by a behavioural observation — a
@@ -836,7 +847,14 @@ If yes, the section lacks gravity. Find the sharpest observed truth
 in it and rebuild the section around that.
 
 C13 — EVIDENCE DOMINANCE CHECK:
-Read every paragraph containing a statistic or named source.
+Step 1 — COUNT:
+Count the statistics in each section (H2-2 through H2-5).
+If any section contains more than 1 statistic, keep only the strongest.
+Remove the rest. Rewrite the surrounding prose so the observation
+carries the meaning without the removed numbers. Report in CHANGES.
+
+Step 2 — SUBORDINATION CHECK:
+Read every remaining paragraph containing a statistic or named source.
 For each:
 - Is the statistic preceded by an observation-led sentence? If no,
   move the observation before the statistic or remove the statistic.
@@ -845,6 +863,7 @@ For each:
 - Does the paragraph read like commentary on a report rather than an
   observation about behaviour or market logic? If yes, rewrite it
   around the strongest behavioural claim in the paragraph.
+
 The article must read as experience-led if all citations are stripped.
 Do not remove all statistics. The goal is subordination, not elimination.
 
@@ -1056,6 +1075,15 @@ Rewrite any failing close to meet this standard.
 Report each rewrite in CHANGES.
 
 A13 — EVIDENCE DOMINANCE CHECK:
+Step 0 — COUNT PER SECTION:
+Count the numeric statistics in each article section (every ## block).
+If any section contains more than 1 statistic:
+- Identify the strongest one (the one most directly connected to an
+  observation already in the section).
+- Remove all others. Rewrite surrounding prose so the observation
+  carries the meaning without the removed numbers.
+- Report each removal in CHANGES.
+
 For each paragraph in the article containing a statistic or named source:
 Step 1 — Does an observation-led sentence precede the statistic?
 If no, the paragraph fails. Move the observation before the statistic
@@ -1076,6 +1104,17 @@ POST CHECKS
 Apply different rules by post number.
 
 EVIDENCE DISCIPLINE — ALL POSTS (P0 — applies to posts 1-7):
+Step 0 — COUNT:
+Count how many of the 7 posts contain a numeric statistic or named
+research source. If more than 2 posts contain statistics:
+- Identify which posts are weakest — where the statistic contributes
+  least to the observation.
+- Remove the evidence sentence from those posts, starting with the
+  weakest, until no more than 2 posts contain statistics.
+- If a post becomes weak after removal, rewrite it around observation.
+- Report each removal in CHANGES.
+At least 5 of the 7 posts must contain no statistics after this check.
+
 For each post, identify whether its main argumentative force comes
 from an observation or from a named source, statistic, or report.
 
