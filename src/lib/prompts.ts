@@ -1444,6 +1444,15 @@ In roughly the first sixty per cent of the script, most beats must be scene or a
 Use action first. Meaning later.
 The listener should be able to picture what is happening before the script explains why it matters.
 
+PAUSE RHYTHM (CRITICAL FOR VOICE):
+Scripts must contain natural pauses so the narration sounds human.
+Use short standalone beats to create breathing space.
+Occasionally use a very short beat for emphasis: "Then it jumps." / "They stop."
+Avoid writing scripts where every line has identical length or rhythm.
+A good script alternates: short beat / short beat / medium beat / very short beat / medium beat.
+This creates natural pacing for ElevenLabs voice narration.
+If the script reads like evenly sized sentences, rewrite it.
+
 VOICE:
 - A seasoned operator
 - Someone describing a repeated pattern they have seen many times
