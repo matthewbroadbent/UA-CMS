@@ -1477,7 +1477,7 @@ Test each script before returning:
 5. Topic discipline test: Does the script introduce a second theme? If yes, remove it.
 6. Authority test: Reject and rewrite any script that:
    - opens with a question
-   - contains more than one slogan-style paired-opposite line
+   - contains repeated slogan-style or paired-opposite lines
    - reads like a motivational speech or marketing copy
    Scripts must sound like a calm operator describing a pattern they have seen many times.
 
