@@ -523,7 +523,7 @@ function ItemDetail({
         item.scripts ? Object.fromEntries(item.scripts.map((s: any) => [s.id, s.aspectRatio || "1:1"])) : {}
     );
     const [selectedScripts, setSelectedScripts] = useState<string[]>(
-        item.scripts ? item.scripts.filter((s: any) => ['30s', '60s'].includes(s.durationType)).map((s: any) => s.id) : []
+        item.scripts ? item.scripts.filter((s: any) => ['30s', '60s', 'shortInsight', 'expandedInsight'].includes(s.durationType)).map((s: any) => s.id) : []
     );
 
     const toggleScriptSelection = (id: string) => {

@@ -85,7 +85,7 @@ export async function POST(req: Request) {
                         scripts.map((s: any) => prisma.videoScript.create({
                             data: {
                                 weeklyInquiryId: id,
-                                durationType: s.duration,
+                                durationType: s.duration || s.type,
                                 hook: s.hook,
                                 script: s.script,
                                 closingLine: s.closingLine,

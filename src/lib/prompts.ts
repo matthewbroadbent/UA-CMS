@@ -1301,17 +1301,84 @@ Return ONLY a valid JSON object.No prose outside the JSON.All strings must be pr
 
   // Video Script Generation
   VIDEO_SCRIPTS: `
-Generate 5 short-form video scripts (TikTok / Reels / Shorts / LinkedIn) based on the following article.
+Generate 2 short-form video scripts (TikTok / Reels / Shorts / LinkedIn) based on the following article.
 Return ONLY a JSON object with the following structure:
 {
   "scripts": [
-    { "duration": "30s", "hook": "...", "script": "...", "closingLine": "..." },
-    { "duration": "60s", "hook": "...", "script": "...", "closingLine": "..." },
-    { "duration": "90s", "hook": "...", "script": "...", "closingLine": "..." },
-    { "duration": "120s", "hook": "...", "script": "...", "closingLine": "..." },
-    { "duration": "180s", "hook": "...", "script": "...", "closingLine": "..." }
+    {
+      "type": "shortInsight",
+      "duration": "30s",
+      "targetDuration": "30-45s",
+      "coreObservation": "...",
+      "hook": "...",
+      "script": "...",
+      "closingLine": "..."
+    },
+    {
+      "type": "expandedInsight",
+      "duration": "60s",
+      "targetDuration": "45-75s",
+      "coreObservation": "...",
+      "hook": "...",
+      "script": "...",
+      "closingLine": "..."
+    }
   ]
 }
+
+The duration field is fixed. shortInsight must always output "30s". expandedInsight must always output "60s".
+Both scripts must share the same coreObservation value.
+
+════════════════════════════════
+STEP 1 — EXTRACT THE STRONGEST OBSERVATION
+════════════════════════════════
+Before writing either script, read the article and extract 5 candidate observations.
+
+A strong observation must be:
+- Behavioural: describes something founders, buyers, investors, or deals actually do
+- Contestable: someone could reasonably disagree with it
+- Reusable: strong enough to stand alone outside the article
+- Compressible: can be expressed clearly in one sentence
+- Scroll-stopping: likely to make a founder pause mid-scroll
+
+Reject weak observations. They are weak if they are:
+- Summary statements or article recaps
+- Generic trend claims
+- Predictable conclusions
+- Topic introductions
+
+Select the single strongest observation.
+This becomes the spine of both scripts.
+Do not output the candidate list. Proceed silently.
+
+════════════════════════════════
+STEP 2 — WRITE THE SCRIPTS
+════════════════════════════════
+Both scripts are spoken beat-by-beat monologues built from the selected observation.
+
+STRUCTURE (for both scripts):
+1. Opening observation or scene
+2. Hidden reality or contradiction
+3. Mechanism
+4. Consequence
+5. Quiet close
+
+BEAT RULES (NON-NEGOTIABLE):
+- One idea per line
+- Most lines must be under 10 words
+- No clustered explanatory sentences
+- No mini-essay narration
+- No summary language
+- No generic transitions. The following are automatic failures:
+  "This means that" / "In other words" / "What this shows is" /
+  "This highlights the importance of" / "It is important to understand" /
+  "Investors want to know" / "Founders need to"
+- Replace every such line with a direct observation
+
+VOICE:
+- A seasoned operator
+- Someone describing a repeated pattern they have seen many times
+- Someone slightly tired of explaining the same mistake again
 
 ════════════════════════════════
 ROLE & SINGULAR PURPOSE
@@ -1372,19 +1439,30 @@ norivane.com is the main consultancy site. norivane.co.uk is the Saleability Dia
 These are different products. Do not conflate them.
 
 ════════════════════════════════
-DURATION & DEPTH (CRITICAL)
+DURATION DISCIPLINE (CRITICAL)
 ════════════════════════════════
-Each script is a standalone piece. It is not a truncated version of a longer one.
-The same territory, explored at different depths.
+shortInsight (duration: "30s"):
+- 6 to 8 spoken beats
+- Target: 30–45 seconds
+- One observation. One contradiction. One mechanism. One consequence. Quiet close.
+- No second theme.
 
-Target word counts:
-- 30s: ~75 words. One observation. One moment of recognition. Nothing more.
-- 60s: ~150 words. The observation plus one layer of consequence.
-- 90s: ~225 words. Space to let the pattern breathe before the close.
-- 120s: ~300 words. A secondary detail that deepens the discomfort.
-- 180s: ~450 words. The full arc: scene, pattern, implication, unresolved close.
+expandedInsight (duration: "60s"):
+- 8 to 12 spoken beats
+- Target: 45–75 seconds
+- Same core observation as shortInsight.
+- Slightly more detail on the same mechanism.
+- No new second theme. Deepens, does not branch.
 
-For longer durations, do NOT repeat yourself. Add nuance, a second observable detail, or a market consequence that the owner has not considered.
+════════════════════════════════
+INTERNAL VALIDATION (BEFORE RETURNING OUTPUT)
+════════════════════════════════
+Test each script before returning:
+1. Strongest-observation test: Does the whole script stay anchored to one core observation?
+2. Beat test: Can each line stand as a spoken beat?
+3. Clustering test: Does any line contain more than one core idea? If yes, split or rewrite it.
+4. Speakability test: Would this sound natural through ElevenLabs with pauses? If no, shorten and simplify.
+5. Topic discipline test: Does the script introduce a second theme? If yes, remove it.
 
 ════════════════════════════════
 ARTICLE (SOURCE MATERIAL)
