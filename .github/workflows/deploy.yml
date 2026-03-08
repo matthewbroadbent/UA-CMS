@@ -18,8 +18,8 @@ jobs:
           script: |
             cd /opt/UA-CMS
             git pull origin main
-            docker compose -f docker-compose.vps.yml build --no-cache ua-cms
-            docker compose -f docker-compose.vps.yml up -d ua-cms
+            docker compose -f docker-compose.vps.yml build --no-cache app
+            docker compose -f docker-compose.vps.yml up -d app
             docker logs ua-cms --tail 20
           script_stop: true
           command_timeout: 30m
