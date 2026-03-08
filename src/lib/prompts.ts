@@ -1374,6 +1374,18 @@ BEAT RULES (NON-NEGOTIABLE):
   "This highlights the importance of" / "It is important to understand" /
   "Investors want to know" / "Founders need to"
 - Replace every such line with a direct observation
+- NO QUESTION OPENINGS (NON-NEGOTIABLE): The hook must never be a question.
+  Questions weaken authority and make the script sound like advertising copy.
+  The hook must be a statement, an observed behaviour, a scene, or a repeated pattern.
+  Unacceptable: "Building a hockey stick forecast?" / "Do investors really read your model?"
+  Acceptable: "Most hockey-stick forecasts are dismissed immediately." / "Investors read the assumptions before they read the numbers."
+- NO SLOGAN STRUCTURES: Avoid constructions that read like marketing copy.
+  Especially avoid paired opposites:
+  "X sells this. Y buys that." / "X is not Y. It is Z." / "Capital is scarce. Credibility is scarcer."
+  These structures can occasionally work but must not dominate the script.
+  Prefer grounded observations and behavioural descriptions over compressed rhetorical pairs.
+  WEAK: "Founders sell potential. Investors buy reality."
+  BETTER: "Founders often talk about what the business could become. Investors start with what is true now."
 
 VOICE:
 - A seasoned operator
@@ -1463,6 +1475,11 @@ Test each script before returning:
 3. Clustering test: Does any line contain more than one core idea? If yes, split or rewrite it.
 4. Speakability test: Would this sound natural through ElevenLabs with pauses? If no, shorten and simplify.
 5. Topic discipline test: Does the script introduce a second theme? If yes, remove it.
+6. Authority test: Reject and rewrite any script that:
+   - opens with a question
+   - contains more than one slogan-style paired-opposite line
+   - reads like a motivational speech or marketing copy
+   Scripts must sound like a calm operator describing a pattern they have seen many times.
 
 ════════════════════════════════
 ARTICLE (SOURCE MATERIAL)
