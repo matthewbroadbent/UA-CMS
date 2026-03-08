@@ -19,7 +19,8 @@ RUN npm install
 COPY . .
 
 # Build the Next.js app for production (also runs prisma generate)
-RUN npm run build
+# NODE_OPTIONS limits heap to avoid OOM on low-memory VPS
+RUN NODE_OPTIONS="--max-old-space-size=512" npm run build
 
 # Create directory for media assets
 RUN mkdir -p public/media
