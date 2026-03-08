@@ -338,7 +338,18 @@ VOICE & LINGUISTIC CONSTRAINTS (NON-NEGOTIABLE)
   ENFORCEMENT: Before returning the text_posts array, read the final sentence of every post character by character. If the final sentence contains the words What, How, Why, When, Where or Whether anywhere in it, rewrite it as a declarative statement. Do not return until all seven posts have been checked and all question endings have been rewritten.
 - IMPERATIVE ENDINGS FORBIDDEN: No post may end with a second-person imperative directed at the reader. Forbidden endings include sentences beginning with: You can, You should, You must, You need to, Make sure, Ensure, Consider, Start, Stop, Build, Track, Treat.
   Rewrite as a third-person observation or a consequence.
-- PRODUCT MENTIONS (CASE-INSENSITIVE): The following terms must not appear in any text post in any capitalisation — upper, lower or mixed: 'saleability diagnostic', 'norivane', '£497', 'vat diagnostic'. This check is case-insensitive. 'a saleability diagnostic' and 'Saleability Diagnostic' are both caught by this rule. If any appear, remove them and rewrite the surrounding sentence without them.
+- POSTS 6 AND 7 — CLOSING STRUCTURE (NON-NEGOTIABLE): Posts 6 and 7 must end with exactly two lines in this order:
+  Line 1 (CTA): A quiet reference to norivane.co.uk and the diagnostic. Example: "If any of this felt familiar, norivane.co.uk has a diagnostic that takes twenty minutes."
+  Line 2 (Reflection trigger): A single declarative sentence under twelve words. Calm and observational. Describes a pattern founders recognise. Leaves the thought slightly open. Must NOT be a question, a slogan, a motivational statement or a sales CTA.
+  Examples of acceptable reflection triggers:
+    "Buyers tend to notice this long before founders do."
+    "This is where many exits quietly break."
+    "Most founders only see this when a buyer points it out."
+    "It usually becomes visible too late."
+    "Buyers rarely ignore this signal."
+  Forbidden endings for the reflection trigger: any question; "What do you think?"; "Let me know your thoughts."; "Agree or disagree?"; any motivational or imperative phrasing.
+  This two-line closing pattern is mandatory. Posts 6 and 7 must not end on the CTA line alone.
+- PRODUCT MENTIONS (CASE-INSENSITIVE): The following terms must not appear in posts 1-5 in any capitalisation — upper, lower or mixed: 'saleability diagnostic', 'norivane', '£497', 'vat diagnostic'. This check is case-insensitive. 'a saleability diagnostic' and 'Saleability Diagnostic' are both caught by this rule. If any appear in posts 1-5, remove them and rewrite the surrounding sentence without them. Posts 6 and 7 are exempt from the norivane.co.uk restriction — they must include it as part of the required closing structure above.
 - CONTENT EXCLUSIONS (APPLIES TO ALL TEXT POSTS): The following must not appear in any text post regardless of whether they originate from the author input or the research pack:
   - AI tool recommendations or instructions to deploy AI tools
   - AI adoption statistics (percentage rates, time-saving claims, adoption trend data) are forbidden in posts. Specific observations about AI in buyer diligence or AI-automated operations as a value driver are permitted when directly relevant to the week's theme.
@@ -557,7 +568,7 @@ These three are invisible. Never write them in the article.
 ════════════════════════════════
 STEP 1.5: GENERATE CANDIDATE CLAIMS (INTERNAL ONLY)
 ════════════════════════════════
-Before filtering any material, generate exactly 5 candidate claims
+Before filtering any material, generate exactly 7 candidate claims
 derived from the Author Input and Article Spine.
 
 A valid claim is a concrete, contestable statement about:
@@ -578,10 +589,41 @@ Invalid examples (reject these immediately):
 - Founders should be realistic.
 - Credibility affects valuation.
 
-After generating 5 candidates, discard the 2 weakest.
-Retain the 3 strongest. Every retained claim must describe behaviour,
-decision logic, or transactional consequence. Abstract truths are not
-valid retained claims.
+CLAIM SCORING MODEL (INTERNAL ONLY — do not output):
+Score each of the 7 candidates against five criteria. Score each 0 to 3.
+
+1. Behavioural specificity
+Does the sentence describe something people actually do?
+Weak: "Financial models should be credible."
+Strong: "Investors read the assumptions before they read the numbers."
+
+2. Consequence
+Does the claim imply a real commercial, deal, or valuation outcome?
+Weak: "Customer concentration is risky."
+Strong: "One customer can control your quarter."
+
+3. Memorability
+Is the sentence distinctive enough to be remembered or quoted later?
+Weak: "Accounts should reflect business reality."
+Strong: "Profit on paper is often a lie when cash is weak."
+
+4. Deal relevance
+Would this sentence sound at home in a real diligence, lending, or buyer discussion?
+Weak: "Growth matters to buyers."
+Strong: "Buyers underwrite your client's next budget cycle."
+
+5. Visual potential
+Could this claim become a visible scene in a short video?
+Weak: "Businesses should manage working capital."
+Strong: "They open the spreadsheet and go straight to assumptions."
+
+Total possible score per claim: 15. Minimum acceptable: 11.
+
+Retain the 3 highest-scoring claims. If fewer than 3 candidates score
+at least 11, rewrite the weakest claims and score again. Continue
+silently until 3 claims meet the threshold.
+
+Do not output the candidates, scores, or threshold logic.
 These 3 claims must shape the Article Spine and the prose in STEP 3.
 They must not appear as a labelled list in the published article.
 
@@ -718,14 +760,20 @@ STEP 2.5: SELECT SECTION ANCHORS BEFORE WRITING
 Before writing any section, complete this step for each of the four
 sections (H2-2, H2-3, H2-4, H2-5).
 
-For each section, generate three candidate behavioural observations.
+For each section, generate seven candidate behavioural observations.
 Each candidate must describe something investors do, buyers notice,
 founders assume, or deals experience — specific, contestable, concrete.
-Select the strongest candidate as the section anchor.
-The other two are discarded and must not appear in the article.
 
-Do this internally. The candidates do not appear in the article.
-Only the selected anchor is used — as the opening move of the section.
+Score each candidate internally against the five criteria defined in
+Step 1.5 (behavioural specificity, consequence, memorability, deal
+relevance, visual potential). Total possible: 15. Minimum acceptable: 11.
+
+Select the highest-scoring candidate as the section anchor. If no
+candidate scores at least 11, rewrite the candidate set and score again.
+
+Do this silently for each section. Do not output candidates, scores, or
+rankings. Only the selected anchor is used — as the opening move of
+the section.
 
 ════════════════════════════════
 STEP 3: WRITE SECTIONS 2 THROUGH 5
@@ -1144,18 +1192,42 @@ P3 — Check punctuation. Any list of 3+ items must have commas.
      The no-comma-after-and/but/or rule does not remove other commas.
 
 POSTS 6-7 — Commercial close:
-P4 — Post 6 must contain exactly one reference to norivane.co.uk.
-     If absent, add the following as a final sentence:
-     "If any of this felt familiar, norivane.co.uk has a diagnostic
-     that takes twenty minutes."
-     If more than one reference exists, remove all but the last.
-P5 — Post 7 must end with a reference to norivane.co.uk in this
-     register: quiet, authoritative, no imperative.
-     If absent, add as final sentence:
-     "The Saleability Diagnostic at norivane.co.uk takes twenty
-     minutes and tells you exactly where you stand."
-     If the existing ending already references norivane.co.uk
-     appropriately, leave it unchanged.
+P4 — Post 6 must end with exactly two lines in this order:
+     Line 1 (CTA): exactly one reference to norivane.co.uk.
+       If absent or incorrect, use: "If any of this felt familiar,
+       norivane.co.uk has a diagnostic that takes twenty minutes."
+       If more than one norivane.co.uk reference exists in the post,
+       remove all but the one in Line 1.
+     Line 2 (Reflection trigger): a single declarative sentence, under
+       twelve words, calm and observational, describing a pattern
+       founders recognise, leaving the thought slightly open.
+       Must NOT be a question, slogan, motivational statement or CTA.
+       If a valid reflection trigger is already present as the final
+       line after the CTA, leave it unchanged.
+       If absent or invalid, write a new one appropriate to the post's theme.
+       Examples: "Buyers tend to notice this long before founders do."
+                 "This is where many exits quietly break."
+                 "Most founders only see this when a buyer points it out."
+                 "It usually becomes visible too late."
+                 "Buyers rarely ignore this signal."
+P5 — Post 7 must end with exactly two lines in this order:
+     Line 1 (CTA): a quiet, authoritative reference to norivane.co.uk.
+       If absent, use: "The Saleability Diagnostic at norivane.co.uk
+       takes twenty minutes and tells you exactly where you stand."
+       If the existing line already references norivane.co.uk
+       appropriately, leave it unchanged.
+     Line 2 (Reflection trigger): a single declarative sentence, under
+       twelve words, calm and observational, describing a pattern
+       founders recognise, leaving the thought slightly open.
+       Must NOT be a question, slogan, motivational statement or CTA.
+       If a valid reflection trigger is already present as the final
+       line after the CTA, leave it unchanged.
+       If absent or invalid, write a new one appropriate to the post's theme.
+       Examples: "Buyers tend to notice this long before founders do."
+                 "This is where many exits quietly break."
+                 "Most founders only see this when a buyer points it out."
+                 "It usually becomes visible too late."
+                 "Buyers rarely ignore this signal."
 P6 — Neither post 6 nor post 7 may contain a price (£497).
      Remove if present.
 
@@ -1330,33 +1402,68 @@ The duration field is fixed. shortInsight must always output "30s". expandedInsi
 Both scripts must share the same coreObservation value.
 
 ════════════════════════════════
-STEP 1 — OBSERVATION SELECTION GATE (CRITICAL)
+STEP 1 — OBSERVATION SELECTION GATE (INTERNAL ONLY)
 ════════════════════════════════
 Before writing either script:
 
-1. Generate seven candidate observations derived from the article.
+Generate seven candidate observations derived from the article.
 
-Each observation must describe a repeated behavioural pattern in founders, buyers, investors, or deals.
+Each observation must:
+- be one sentence
+- be under fifteen words
+- describe a repeated behavioural pattern in founders, buyers, investors, or deals
+
 Weak observations describe ideas. Strong observations describe behaviour.
 Weak: "Investors want credible financial models."
 Strong: "Investors read the assumptions before they read the numbers."
 
-2. Stress test each candidate using these five filters:
+OBSERVATION SCORING MODEL (INTERNAL ONLY — do not output):
+Score each of the seven candidates against five criteria. Score each 0 to 3.
 
-BANALITY TEST: If the statement could appear in a generic consultancy blog, reject it.
+1. Behavioural specificity
+Does the sentence describe something people actually do?
+Weak: "Financial models should be credible."
+Strong: "Investors read the assumptions before they read the numbers."
 
-ROOM TEST: Would an experienced investor recognise this pattern from real meetings? If not, reject it.
+2. Consequence
+Does the observation imply a real commercial, deal, or valuation outcome?
+Weak: "Customer concentration is risky."
+Strong: "One customer can control your quarter."
 
-CONTRARIAN TEST: Does the observation challenge a common founder belief? If not, downgrade it.
+3. Memorability
+Is the sentence distinctive enough to be remembered or quoted later?
+Weak: "Accounts should reflect business reality."
+Strong: "Profit on paper is often a lie when cash is weak."
 
-COMPRESSION TEST: Can the observation be expressed clearly in one sentence under fifteen words? If not, rewrite it.
+4. Deal relevance
+Would this sentence sound at home in a real diligence, lending, or buyer discussion?
+Weak: "Growth matters to buyers."
+Strong: "Buyers underwrite your client's next budget cycle."
 
-RECOGNITION TEST: Would a founder pause and think "that might be me"? If not, reject it.
+5. Visual potential
+Could this observation become a visible scene in a short video?
+Weak: "Businesses should manage working capital."
+Strong: "They open the spreadsheet and go straight to assumptions."
 
-3. Select the strongest surviving observation.
-This becomes the spine of both scripts.
-Do not output the rejected observations.
-Proceed silently using the strongest observation.
+Total possible score: 15. Minimum acceptable: 11.
+
+Selection rule:
+- Choose the highest-scoring observation.
+- If no observation scores at least 11, rewrite the candidate set and score again.
+- Continue silently until one observation meets the threshold.
+
+Supporting guardrail:
+CONTRARIAN CHECK: If the top-scoring observation confirms what founders already
+believe rather than challenging it, check whether the second-highest scorer is
+contrarian and scores within 2 points. If so, choose the contrarian observation.
+
+Do not output:
+- the candidate observations
+- the scores
+- the threshold logic
+- the ranking process
+
+The selected observation becomes the spine of both scripts. Proceed silently.
 
 ════════════════════════════════
 STEP 2 — WRITE THE SCRIPTS
