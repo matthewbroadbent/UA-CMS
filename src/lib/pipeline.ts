@@ -946,6 +946,13 @@ export async function runVoicePipeline(inquiryId: string, options?: { autoApprov
             log(`Generating audio for ${script.durationType} script...`);
             const audioUrl = await generateSpeech(text, script.id, inquiry.id);
 
+            // Save audioUrl immediately — audio is already uploaded to Supabase.
+            // This ensures the URL is never lost even if Tier 3 validation fails.
+            await (prisma as any).videoScript.update({
+                where: { id: script.id },
+                data: { audioUrl }
+            });
+
             // Tier 3 Validation
             const validation = await validateTier3(script.id, audioUrl);
             if (!validation.valid) {
@@ -955,7 +962,6 @@ export async function runVoicePipeline(inquiryId: string, options?: { autoApprov
             await (prisma as any).videoScript.update({
                 where: { id: script.id },
                 data: {
-                    audioUrl,
                     actualAudioDuration: validation.duration,
                     status: 'VOICE_GENERATED',
                     approved: options?.autoApprove ? true : script.approved
