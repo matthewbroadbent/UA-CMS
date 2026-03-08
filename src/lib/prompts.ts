@@ -260,7 +260,9 @@ EXPLICIT EXCLUSIONS: The following types of sources are forbidden regardless of 
 - Digital transformation metrics
 - SME productivity from technology (generic statistics)
 - Workforce readiness for AI
+- Survey-based SME statistics of any kind: percentage rates of founder sentiment, SME behaviour, SME adoption of any practice, industry averages, benchmark reports (e.g. "X% of SMEs report...", "Y% of founders say..."). These are filler. Do not fetch them. Do not include them.
 Sources about AI's specific role in M&A due diligence, buyer assessment tools or operational automation as a valuation factor are permitted.
+Specific verifiable market facts are permitted: named transactions, regulatory decisions, published deal multiples from named advisors, confirmed policy changes.
 These exclusions apply even if the Theme touches on technology, efficiency or operations.
 
 ════════════════════════════════
@@ -341,8 +343,9 @@ VOICE & LINGUISTIC CONSTRAINTS (NON-NEGOTIABLE)
   - AI tool recommendations or instructions to deploy AI tools
   - AI adoption statistics (percentage rates, time-saving claims, adoption trend data) are forbidden in posts. Specific observations about AI in buyer diligence or AI-automated operations as a value driver are permitted when directly relevant to the week's theme.
   - Digital transformation metrics
+  - Survey-based SME statistics of any kind: percentage claims about founder behaviour, SME sentiment, SME adoption rates, industry averages (e.g. "X% of SMEs report...", "Y% of founders say..."). These posts are built on the author's observation and experience, not third-party survey data. If a statistic of this type appears, remove it and rewrite the surrounding sentence without it.
   These exclusions apply even when the author's Thinking field contains them. Author voice is preserved in other respects; these specific references are silently removed.
-  EXCEPTION: If the Theme explicitly names AI or technology as its central subject, these exclusions are lifted for that run only.
+  EXCEPTION: If the Theme explicitly names AI or technology as its central subject, the AI exclusions are lifted for that run only. The SME statistics exclusion is never lifted.
 
 ════════════════════════════════
 STRATEGIC NARRATIVE ARC (CRITICAL)
@@ -514,6 +517,63 @@ ANCHOR: What does Section 1 prove about the angle?
 These three are invisible. Never write them in the article.
 
 ════════════════════════════════
+STEP 1.5: GENERATE CANDIDATE CLAIMS (INTERNAL ONLY)
+════════════════════════════════
+Before filtering any material, generate exactly 5 candidate claims
+derived from the Author Input and Article Spine.
+
+A valid claim is a concrete, contestable statement about:
+- founder behaviour
+- investor behaviour
+- buyer behaviour
+- deal mechanics
+- valuation consequence
+
+Valid examples:
+- Investors reject most deals while reading the model.
+- Founders believe they lost the deal in the meeting.
+- Weak assumptions trigger silent rejection before discussion.
+
+Invalid examples (reject these immediately):
+- Financial credibility is important.
+- Investors value good models.
+- Founders should be realistic.
+- Credibility affects valuation.
+
+After generating 5 candidates, discard the 2 weakest.
+Retain the 3 strongest. Every retained claim must describe behaviour,
+decision logic, or transactional consequence. Abstract truths are not
+valid retained claims.
+These 3 claims must shape the Article Spine and the prose in STEP 3.
+They must not appear as a labelled list in the published article.
+
+════════════════════════════════
+STEP 1.6: OBSERVATION ENGINE (INTERNAL ONLY)
+════════════════════════════════
+Generate the following internally before writing any prose:
+
+5 BEHAVIOURAL OBSERVATIONS
+Each must describe something investors do, buyers notice,
+founders assume, or deals experience.
+Valid: Investors screen assumptions before they schedule meetings.
+Valid: Buyers notice incoherence long before diligence begins.
+Valid: Founders assume rejection happens in the room.
+Invalid: Financial planning matters. / Credibility is essential.
+
+3 CONTRARIAN IMPLICATIONS
+Each must challenge the default founder interpretation of events.
+Valid: Deals often die before the founder enters the room.
+
+1 CENTRAL THESIS
+The one-sentence argument this article is really making beneath
+the story, examples and commentary.
+Valid: The point at which investors decide is earlier than founders think.
+
+These outputs are internal only. They must shape the prose but
+must never appear as labelled planning artefacts in the
+published article.
+
+════════════════════════════════
 STEP 2: FILTER YOUR MATERIAL
 ════════════════════════════════
 Before selecting any material, apply this filter:
@@ -524,6 +584,31 @@ DISCARD if: general SME market size statistics unless market
 size is the Subject.
 DISCARD if: requires more than one sentence of context to connect
 to the Subject.
+DISCARD if: survey-based percentage statistics about SME behaviour,
+sentiment or practice (e.g. "X% of founders report...", "Y% of SMEs
+have..."). This article is built on observed experience and specific
+sourced facts, not generic industry survey data. If such a statistic
+appears in the research pack, do not use it.
+
+BEHAVIOURAL OBSERVATION RULE (2A — CRITICAL):
+Each section must be anchored by a behavioural observation — a
+statement describing something that investors do, buyers notice,
+founders assume, or deals experience.
+
+VALID observations (concrete, contestable, behavioural):
+- Investors reject most opportunities while reading the model.
+- Founders believe they lost the deal in the meeting.
+- Most deals die before the meeting happens.
+- When the assumptions break, the meeting disappears.
+
+INVALID observations (abstract, general, unchallenging):
+- Financial models are important.
+- Credibility matters in finance.
+- Growth projections should be realistic.
+- Investors want credible financial assumptions.
+
+The test: could a founder disagree with this sentence? If no one
+could disagree, it is not an observation. It is decoration. Discard it.
 
 AI REFERENCES — NUANCED FILTER:
 DISCARD: Generic AI adoption statistics not connected to the article's
@@ -542,8 +627,32 @@ exit readiness specifically? If yes, include it. If it is a general
 adoption trend statistic, discard it.
 
 ════════════════════════════════
+STEP 2.5: SELECT SECTION ANCHORS BEFORE WRITING
+════════════════════════════════
+Before writing any section, complete this step for each of the four
+sections (H2-2, H2-3, H2-4, H2-5).
+
+For each section, generate three candidate behavioural observations.
+Each candidate must describe something investors do, buyers notice,
+founders assume, or deals experience — specific, contestable, concrete.
+Select the strongest candidate as the section anchor.
+The other two are discarded and must not appear in the article.
+
+Do this internally. The candidates do not appear in the article.
+Only the selected anchor is used — as the opening move of the section.
+
+════════════════════════════════
 STEP 3: WRITE SECTIONS 2 THROUGH 5
 ════════════════════════════════
+
+SECTION ANCHOR RULE (2B — NON-NEGOTIABLE):
+Every section opens with the selected behavioural observation from
+Step 2.5. Explanation follows observation — never precedes it.
+After writing each paragraph, ask: does this paragraph explain,
+evidence or extend the section's opening observation? If no, remove
+or rewrite it. No paragraph may drift into general commentary,
+advice or editorial summary. If it could appear in a consultancy
+blog unchanged, rewrite it.
 
 YOUR OUTPUT MUST BEGIN WITH THESE EXACT LINES — reproduce them verbatim as the
 first lines of your response, before any other content:
@@ -641,6 +750,16 @@ beginning with '(INSTRUCTION' or containing the phrases
 in article', 'Ground in observable', 'Draw on the Thinking field'.
 If found, remove the entire paragraph — it is a leaked instruction.
 
+C12 — SECTIONAL GRAVITY: For each section (H2-2 through H2-5), read
+the opening sentence. Ask: does this describe something investors do,
+buyers notice, founders assume, or deals experience? Or is it framing,
+context-setting, or advice?
+If it is framing or advice, rewrite the section to open with the
+strongest behavioural claim found anywhere in the section.
+Then ask: could this section appear in a consultancy blog unchanged?
+If yes, the section lacks gravity. Find the sharpest observed truth
+in it and rebuild the section around that.
+
 ════════════════════════════════
 MANDATORY VOICE
 ════════════════════════════════
@@ -728,6 +847,17 @@ Remove those sentences. Do not remove sentences about AI's role in
 buyer diligence, valuation logic or operational automation as a
 value driver.
 
+A2b — GENERIC SME STATISTICS:
+Find any sentence containing survey-based percentage statistics about
+SME behaviour, sentiment, adoption or market size
+(e.g. "X% of SMEs...", "Y% of founders report...", "studies show that...").
+Remove those sentences entirely.
+EXCEPTION: Do not remove sentences that cite a specific named transaction,
+a confirmed regulatory decision, a published deal multiple from a named
+advisor, or a verifiable market fact with a direct source. The test is:
+could this statistic appear in a McKinsey slide deck as generic filler?
+If yes, remove it.
+
 A3 — SCAFFOLDING LANGUAGE:
 Search for: the angle is, the subject is, the anchor is,
 quiet close, this section covers.
@@ -781,6 +911,61 @@ prose. Examples of what must not appear:
   a sentence in a published article
 
 If found, remove the entire sentence. Do not replace it.
+
+A10 — SECTIONAL GRAVITY:
+For each article section (every ## heading block), read the opening
+sentence. Ask: does it describe something investors do, buyers notice,
+founders assume, or deals experience?
+If it is framing, context-setting or advice, find the strongest
+behavioural claim anywhere in that section and move it to the opening.
+Rewrite the surrounding sentences to follow from it.
+Test: could this section appear in a consultancy blog unchanged?
+If yes, it fails. Fix it.
+
+A11 — FILLER SENTENCE OPENERS:
+Delete any sentence in the article or any post that begins with:
+- "Many businesses..."
+- "In today's environment..."
+- "It is important to..."
+- "Studies show..."
+These are unconditional. No exception. Remove the sentence entirely.
+Do not replace it. Report each removal in CHANGES.
+
+A12 — SECTION CLOSING TEST:
+For each article section (every ## heading block), read the final
+sentence. If it is any of the following, it fails:
+- advice directed at the founder
+- a summary of what the section covered
+- a generic conclusion
+- a soft moral or vague restatement
+- an instruction disguised as an observation
+
+Weak close examples (must be rewritten):
+- "Founders should therefore ensure their assumptions are realistic."
+- "Ultimately, credibility matters in every deal."
+- "This means business owners need stronger financial discipline."
+
+A valid close must do at least one of the following:
+- Sharpen the section's opening observation
+- Introduce a contrarian implication of the section's argument
+- Land a concrete consequence the reader has not yet considered
+- Leave the reader with a specific unresolved tension
+
+Strong close examples:
+- "Once the assumptions break the meeting quietly disappears."
+- "By that point the buyer is no longer trying to believe the story."
+- "The model is still open on the screen but the decision has already moved on."
+
+ANTI-STYLISATION GUARD:
+Do not over-stylise. Do not turn every close into a slogan.
+Do not use formulaic aphorisms (X is not Y; it is Z).
+The close must feel observational, not theatrical.
+Preserve tonal variation across sections. Not every close needs to
+sound maximally sharp. It must be stronger, but still appropriate
+to the section's role in the article arc.
+
+Rewrite any failing close to meet this standard.
+Report each rewrite in CHANGES.
 
 ════════════════════════════════
 POST CHECKS
