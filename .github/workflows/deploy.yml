@@ -1,0 +1,25 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/UA-CMS
+            git pull origin main
+            docker compose -f docker-compose.vps.yml build --no-cache ua-cms
+            docker compose -f docker-compose.vps.yml up -d ua-cms
+            docker logs ua-cms --tail 20
+          script_stop: true
+          command_timeout: 30m
