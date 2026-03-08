@@ -1246,10 +1246,23 @@ export async function runRenderPipeline(scriptId: string, aspectRatio?: string) 
         }
 
         // 2. Dynamic Duration Rescaling (SYNC FIX)
-        log(`Measuring audio duration for ${audioPath}...`);
+        // If audio is a remote URL, download to /tmp first — ffprobe cannot resolve
+        // external hostnames inside the Docker container network.
+        let probeAudioPath = audioPath;
+        if (audioPath.startsWith('http')) {
+            const localAudioProbe = path.join('/tmp', `${scriptId}_probe.mp3`);
+            log(`Downloading audio for probing: ${audioPath}`);
+            const audioRes = await fetch(audioPath);
+            if (!audioRes.ok) throw new Error(`Failed to download audio for probing: ${audioRes.status}`);
+            const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
+            fs.writeFileSync(localAudioProbe, audioBuffer);
+            probeAudioPath = localAudioProbe;
+        }
+
+        log(`Measuring audio duration for ${probeAudioPath}...`);
 
         const audioDuration: number = await new Promise((resolve, reject) => {
-            ffmpeg.ffprobe(audioPath, (err: any, metadata: any) => {
+            ffmpeg.ffprobe(probeAudioPath, (err: any, metadata: any) => {
                 if (err) reject(err);
                 else resolve(metadata.format.duration || 0);
             });
