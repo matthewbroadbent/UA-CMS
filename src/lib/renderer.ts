@@ -328,8 +328,8 @@ async function generateASS(script: any, dir: string, width: number, height: numb
     const primaryColor = "&H00FFFFFF"; // White (BGR)
     const backColor = "&H80000000";   // 50% transparent black box
 
-    // MarginV: distance from bottom edge — lower third positioning
-    const marginV = height === 1920 ? 120 : (width === 1920 ? 60 : 80);
+    // MarginV: distance from bottom edge — raised to clear video player timeline
+    const marginV = height === 1920 ? 220 : (width === 1920 ? 120 : 160);
 
     let assContent = `[Script Info]
 Title: UA Captions
