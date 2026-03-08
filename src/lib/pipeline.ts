@@ -1064,9 +1064,14 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
                     log(`Phase 2: Grounding ${scenes.length} scenes for ${script.id}...`);
 
                     const processedScenes = [];
+                    let previousScenePrompt = '';
                     for (const s of scenes) {
+                        const previousSceneSection = previousScenePrompt
+                            ? `Previous scene:\n${previousScenePrompt}\n\n`
+                            : '';
                         const groundPrompt = buildPrompt(groundingTemplate, {
-                            spoken_text: s.scriptSegment
+                            spoken_text: s.scriptSegment,
+                            previous_scene_section: previousSceneSection
                         });
 
                         await new Promise(r => setTimeout(r, 500));
@@ -1078,11 +1083,13 @@ export async function runMediaPipeline(inquiryId: string, selectedScriptIds?: st
                             finalDuration = Math.round(finalDuration * 2) / 2;
                         }
 
+                        const scenePrompt = groundRes.text.trim();
                         processedScenes.push({
                             ...s,
                             duration: finalDuration,
-                            prompt: groundRes.text.trim()
+                            prompt: scenePrompt
                         });
+                        previousScenePrompt = scenePrompt;
                         log(`Grounding complete for scene ${s.index}`);
                     }
 

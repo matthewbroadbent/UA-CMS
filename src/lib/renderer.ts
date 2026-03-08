@@ -324,13 +324,15 @@ export async function renderVideo({ scriptId, outputName, aspectRatio: overrideR
  * Supports Primary, Secondary, and Emphasis styles with the 300ms lag.
  */
 async function generateASS(script: any, dir: string, width: number, height: number) {
-    const fontName = "DejaVu Serif"; // FFmpeg font name for the available serif
-    const primaryColor = "&H00F5F5F5"; // Off-white (BGR)
-    const emphasisColor = "&H0037AFD4"; // Muted Amber (#D4AF37)
-    const secondaryColor = "&H00CCCCCC"; // Softer off-white
+    const fontName = "DejaVu Sans"; // Clean sans-serif
+    const primaryColor = "&H00FFFFFF"; // White (BGR)
+    const backColor = "&H80000000";   // 50% transparent black box
+
+    // MarginV: distance from bottom edge — lower third positioning
+    const marginV = height === 1920 ? 120 : (width === 1920 ? 60 : 80);
 
     let assContent = `[Script Info]
-Title: UA Authoritative Captions
+Title: UA Captions
 ScriptType: v4.00+
 PlayResX: ${width}
 PlayResY: ${height}
@@ -338,30 +340,27 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Primary,${fontName},64,${primaryColor},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,80,80,${height === 1920 ? 800 : (width === 1920 ? 100 : 180)},1
-Style: Secondary,${fontName},42,${secondaryColor},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.5,0,2,80,80,${height === 1920 ? 750 : (width === 1920 ? 50 : 130)},1
-Style: Emphasis,${fontName},64,${emphasisColor},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,2,0,2,80,80,${height === 1920 ? 800 : (width === 1920 ? 100 : 180)},1
+Style: Primary,${fontName},52,${primaryColor},&H000000FF,&H00000000,${backColor},0,0,0,0,100,100,0,0,3,0,0,2,40,40,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-    // Implement the 200-300ms Editorial Lag logic
-    const lag = 0.25;
+    // 200ms editorial lag
+    const lag = 0.2;
     let currentTime = 0;
 
     for (const scene of script.scenes) {
         const start = currentTime + lag;
         const end = currentTime + (scene.duration || 6);
 
-        // Simple logic for primary vs emphasis (could be smarter with NLP)
-        // For now, we'll put the whole segment in Primary
-        // If a word is wrapped in ** it becomes Emphasis (if we had markdown in script segments)
+        // Truncate to max 6 words — captions are assistive, not transcripts
+        const words = (scene.scriptSegment || "").trim().split(/\s+/);
+        const caption = words.slice(0, 6).join(" ");
 
-        const text = scene.scriptSegment || "";
-        const formattedText = text.replace(/\*\*(.*?)\*\*/g, `{\\rEmphasis}$1{\\rPrimary}`);
-
-        assContent += `Dialogue: 0,${formatTime(start)},${formatTime(end)},Primary,,0,0,0,,${formattedText}\n`;
+        if (caption) {
+            assContent += `Dialogue: 0,${formatTime(start)},${formatTime(end)},Primary,,0,0,0,,${caption}\n`;
+        }
 
         currentTime += (scene.duration || 6);
     }
