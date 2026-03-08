@@ -347,6 +347,39 @@ VOICE & LINGUISTIC CONSTRAINTS (NON-NEGOTIABLE)
   These exclusions apply even when the author's Thinking field contains them. Author voice is preserved in other respects; these specific references are silently removed.
   EXCEPTION: If the Theme explicitly names AI or technology as its central subject, the AI exclusions are lifted for that run only. The SME statistics exclusion is never lifted.
 
+- POST EVIDENCE DISCIPLINE (NON-NEGOTIABLE — APPLIES TO ALL 7 POSTS):
+  Every post must be led by an observed truth, behavioural pattern,
+  founder mistake, buyer logic, or commercial consequence.
+  A post must never read like a research summary or mini funding report.
+
+  BORROWED-AUTHORITY RULE:
+  A post fails if its main argumentative force comes from a statistic,
+  a research finding, a named report, or a market data point.
+  Research may appear only as light support. The post must still work
+  if the evidence sentence is removed.
+
+  STATISTIC RESTRAINT:
+  Statistics in posts should be rare. Do not use statistics to make a
+  post sound authoritative. Use a statistic only if the number itself
+  is the surprising part of the point — and even then, question it.
+  Across the seven posts, statistics should appear in no more than two
+  posts unless the Theme itself is explicitly data-driven.
+
+  BAN REPORT-OPENERS IN POSTS:
+  Treat these as failures unless the post is explicitly about a named
+  market development and the evidence is genuinely the point:
+  - "Research shows..."
+  - "Data shows..."
+  - "Analysis found..."
+  - "A report found..."
+  - "X indicates that..."
+
+  LIVED-AUTHORITY TEST:
+  Before returning any post, ask internally: does this sound like
+  someone who has sat in rooms, watched investors behave and noticed
+  repeated patterns? Or does it sound like someone summarising a
+  funding report? If the latter, rewrite from observation.
+
 ════════════════════════════════
 STRATEGIC NARRATIVE ARC (CRITICAL)
 ════════════════════════════════
@@ -590,6 +623,48 @@ have..."). This article is built on observed experience and specific
 sourced facts, not generic industry survey data. If such a statistic
 appears in the research pack, do not use it.
 
+EVIDENCE DISCIPLINE (NON-NEGOTIABLE):
+This article must be led by experience-driven observation.
+Research is supporting evidence only. It sharpens observations.
+It never creates them.
+
+OBSERVATION-FIRST RULE:
+Every section must open with observed behaviour, lived pattern, deal
+logic, or founder/investor misinterpretation. Research cannot open a
+section unless the section is explicitly about a named market fact or
+regulatory development.
+
+EVIDENCE-SUBORDINATION RULE:
+When research is used in prose, it must follow an observation and
+sharpen it. Research must not be used to generate the observation
+from scratch. Sequence is always: observation first, evidence second.
+
+STATISTIC NECESSITY TEST (apply internally before every statistic):
+1. Does this materially change the reader's understanding of the mechanism?
+2. Does this reveal consequence or scale that observation alone cannot carry?
+3. Would the paragraph become stronger, cleaner or more timeless without it?
+If the answer to question 3 is yes, remove the statistic.
+
+BAN REPORT-STYLE PROSE:
+The following sentence openers are failures unless the named evidence
+materially changes the paragraph's meaning AND the paragraph already
+has an observation-led opening:
+- "X data shows..."
+- "Analysis indicates..."
+- "Research suggests..."
+- "According to..."
+- "Recent studies show..."
+- "Industry data indicates..."
+
+EVIDENCE CAP:
+The article must still read as experience-led if all citations were
+stripped out. Evidence should appear occasionally, not repeatedly.
+Do not let research dominate any section.
+The article must meet the citation floor, but citations should support
+observations rather than generate them. If necessary, group evidence
+into fewer, stronger paragraphs rather than scattering statistics
+throughout the article.
+
 BEHAVIOURAL OBSERVATION RULE (2A — CRITICAL):
 Each section must be anchored by a behavioural observation — a
 statement describing something that investors do, buyers notice,
@@ -759,6 +834,19 @@ strongest behavioural claim found anywhere in the section.
 Then ask: could this section appear in a consultancy blog unchanged?
 If yes, the section lacks gravity. Find the sharpest observed truth
 in it and rebuild the section around that.
+
+C13 — EVIDENCE DOMINANCE CHECK:
+Read every paragraph containing a statistic or named source.
+For each:
+- Is the statistic preceded by an observation-led sentence? If no,
+  move the observation before the statistic or remove the statistic.
+- Ignore the statistic and read the paragraph without it. Does the
+  paragraph still make its point clearly? If yes, remove the statistic.
+- Does the paragraph read like commentary on a report rather than an
+  observation about behaviour or market logic? If yes, rewrite it
+  around the strongest behavioural claim in the paragraph.
+The article must read as experience-led if all citations are stripped.
+Do not remove all statistics. The goal is subordination, not elimination.
 
 ════════════════════════════════
 MANDATORY VOICE
@@ -967,10 +1055,40 @@ to the section's role in the article arc.
 Rewrite any failing close to meet this standard.
 Report each rewrite in CHANGES.
 
+A13 — EVIDENCE DOMINANCE CHECK:
+For each paragraph in the article containing a statistic or named source:
+Step 1 — Does an observation-led sentence precede the statistic?
+If no, the paragraph fails. Move the observation before the statistic
+or remove the statistic entirely.
+Step 2 — Ignore the statistic and read the paragraph without it.
+Does the paragraph still make its point? If yes, remove the statistic.
+Report removal in CHANGES.
+Step 3 — Does the paragraph read like commentary on a named report
+rather than an observation about behaviour or market logic?
+If yes, rewrite the paragraph around its strongest behavioural claim.
+Report the rewrite in CHANGES.
+Do not remove all statistics. Subordination is the goal, not elimination.
+The article must still read as experience-led if all citations are stripped.
+
 ════════════════════════════════
 POST CHECKS
 ════════════════════════════════
 Apply different rules by post number.
+
+EVIDENCE DISCIPLINE — ALL POSTS (P0 — applies to posts 1-7):
+For each post, identify whether its main argumentative force comes
+from an observation or from a named source, statistic, or report.
+
+If force comes mainly from a statistic or named source:
+- Remove the evidence sentence. If the post still works, leave it removed.
+  Report the removal in CHANGES.
+- If the post becomes weak without it, do not add more evidence.
+  Rewrite the post around an observation instead.
+
+Flag any post that opens with a report-style sentence:
+"Research shows...", "Data shows...", "Analysis found...",
+"A report found...", "X indicates that..."
+Rewrite the opening as an observation-led sentence. Report in CHANGES.
 
 POSTS 1-5 — Authority building and article tee-up:
 P1 — Remove any product mention in any capitalisation:
