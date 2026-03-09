@@ -717,6 +717,7 @@ async function runPassC2ProseWrite(inquiry: any, researchPack: any, plan: any, c
         nuclear: inquiry.nuclear || "",
         research_pack: JSON.stringify(researchPack),
         article_spine: JSON.stringify(plan.spine_contract),
+        anchor_observation: plan.spine_contract.anchor_observation || "",
         section_1: section1
     };
 

@@ -7,7 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "smoke:db": "tsx scripts/smoke-db.ts"
+    "smoke:db": "tsx scripts/smoke-db.ts",
+    "test:prompts": "tsx scripts/prompt-regression.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
